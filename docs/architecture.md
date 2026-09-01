@@ -77,13 +77,15 @@ Failures remove a partially created runtime and persist a `failed` record for di
 
 ## CodexPro routing
 
-chat2shell derives the installed CodexPro tool descriptors in memory without connecting the host-side descriptor server to any external transport.
+chat2shell loads a pinned static copy of the supported CodexPro tool descriptors; it does not import, start, or inspect CodexPro on the host.
 It adds a required `sandbox_id` to every schema while retaining the original tool name, description, annotations, attachment metadata, and CodexPro arguments.
 
-For each call, chat2shell validates ownership and expiration, restores CodexPro if the sandbox survived a controller restart, updates activity, removes the outer `sandbox_id`, and forwards the call through an authenticated MCP session to CodexPro inside that microVM.
+For each call, chat2shell validates ownership, expiration, and CodexPro health, removes the outer `sandbox_id`, and forwards the call through an authenticated MCP session to CodexPro inside that microVM.
 Calls are serialized per sandbox to prevent concurrent conversations from racing on session selection or writes.
 
-## Expiration and recovery
+CodexPro assigns its own path-derived workspace ID inside the microVM. That internal ID is not part of the chat2shell contract, so chat2shell replaces it in tool results with the persistent public `workspace_id` associated with the sandbox.
+
+## Expiration and failure
 
 The idle deadline moves forward with successful routing attempts but is capped by a hard maximum lifetime.
 The reaper destroys expired microVMs and retains managed workspaces for the configured grace period.
@@ -91,7 +93,8 @@ Expired managed workspaces are moved into chat2shell's recoverable trash directo
 Host workspaces are never moved or deleted.
 
 At controller startup, persisted active records are reconciled with `sbx ls`.
-Missing runtimes become `failed`; surviving runtimes are reused, and a stopped or missing CodexPro process is started lazily on the next tool call.
+Any microVM left by the previous controller is removed and its sandbox record becomes `failed` because the foreground CodexPro session belonged to that controller.
+The user must destroy the failed sandbox before creating a replacement; chat2shell does not restart CodexPro or recover the old runtime automatically.
 
 ## Deferred boundaries
 

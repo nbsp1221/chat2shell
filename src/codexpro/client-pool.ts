@@ -8,6 +8,29 @@ interface JsonRpcResponse {
   readonly error?: { readonly code: number; readonly message: string; readonly data?: unknown };
 }
 
+export function normalizeWorkspaceIdentity(result: CallToolResult, workspaceId: string): CallToolResult {
+  const structuredContent = result.structuredContent;
+  if (!structuredContent) return result;
+
+  const internalIds = [structuredContent.workspace_id, structuredContent.selected_workspace_id]
+    .filter((value): value is string => typeof value === "string" && value !== workspaceId);
+  if (internalIds.length === 0) return result;
+
+  const publicText = (text: string): string => internalIds.reduce(
+    (normalized, internalId) => normalized.replaceAll(internalId, workspaceId),
+    text,
+  );
+  return {
+    ...result,
+    content: result.content.map((item) => item.type === "text" ? { ...item, text: publicText(item.text) } : item),
+    structuredContent: {
+      ...structuredContent,
+      ...(typeof structuredContent.workspace_id === "string" ? { workspace_id: workspaceId } : {}),
+      ...(typeof structuredContent.selected_workspace_id === "string" ? { selected_workspace_id: workspaceId } : {}),
+    },
+  };
+}
+
 function parseEventStream(text: string, expectedId: number): JsonRpcResponse {
   for (const line of text.split(/\r?\n/)) {
     if (!line.startsWith("data:")) continue;
@@ -122,7 +145,7 @@ export class CodexProClientPool {
         session = new CodexProSession(sandbox);
         this.#sessions.set(sandbox.id, session);
       }
-      return session.callTool(toolName, args);
+      return normalizeWorkspaceIdentity(await session.callTool(toolName, args), sandbox.workspaceId);
     });
   }
 

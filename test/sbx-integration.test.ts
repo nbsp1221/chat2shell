@@ -79,7 +79,7 @@ test("the public MCP boundary routes full shell and private Docker only into a r
     assert(toolList.find((tool) => tool.name === "bash")?.inputSchema.required?.includes("sandbox_id"));
 
     const createResult = await callTool(url, 3, "sandbox_create", {});
-    const created = createResult.structuredContent as { status: string; sandbox: { id: string; workspace: { root: string } } };
+    const created = createResult.structuredContent as { status: string; sandbox: { id: string; workspace: { id: string; root: string } } };
     assert.equal(created.status, "created");
     sandboxId = created.sandbox.id;
     const runtimeName = `c2s-${sandboxId.slice(4, 25)}`;
@@ -89,6 +89,7 @@ test("the public MCP boundary routes full shell and private Docker only into a r
 
     const write = await callTool(url, 4, "write", { sandbox_id: sandboxId, path: "proof.txt", content: "isolated\n" });
     assert.notEqual(write.isError, true);
+    assert.equal((write.structuredContent as { workspace_id: string }).workspace_id, created.sandbox.workspace.id);
     assert.equal(fs.readFileSync(path.join(created.sandbox.workspace.root, "proof.txt"), "utf8"), "isolated\n");
 
     const escape = await callTool(url, 5, "bash", { sandbox_id: sandboxId, command: `touch ${hostEscapeMarker}` });
