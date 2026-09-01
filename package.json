@@ -1,0 +1,25 @@
+{
+  "name": "chat2shell",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A private MCP gateway for controlled shell and sandbox access from ChatGPT.",
+  "type": "module",
+  "packageManager": "pnpm@11.23.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "pnpm typecheck && pnpm test",
+    "start": "node dist/src/mcp/main.js",
+    "test": "pnpm build && node --test dist/test/**/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "codexpro": "0.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
