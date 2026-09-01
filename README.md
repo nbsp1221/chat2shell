@@ -1,66 +1,145 @@
 # chat2shell
 
-`chat2shell` is a private MCP gateway for using controlled shell and, later, isolated sandbox capabilities from ChatGPT.
+`chat2shell` is a private MCP control plane that gives ChatGPT full shell and Docker capabilities inside disposable Docker Sandbox microVMs without exposing a host shell or the host Docker daemon.
 
-The initial version preserves the existing CodexPro tool contract so the already registered ChatGPT app continues to work. It adds a stable gateway boundary where authentication, approvals, persistent workspace identities, sandbox lifecycle management, and monitoring can be introduced one decision at a time.
-
-## Current architecture
+## Architecture
 
 ```text
-ChatGPT
+ChatGPT conversations
   -> OpenAI Secure MCP Tunnel
-  -> tunnel-client (outbound connection)
-  -> chat2shell gateway (127.0.0.1:18788)
-  -> CodexPro 0.30.0 (127.0.0.1:18787)
-  -> host workspace
+  -> chat2shell MCP control plane (host, loopback only)
+       -> SQLite workspace, approval, and sandbox registry
+       -> narrow sbx driver
+            -> one Docker Sandbox microVM per sandbox_id
+                 -> CodexPro HTTP MCP
+                 -> approved workspace only
+                 -> private Docker Engine
 ```
 
-The gateway currently performs the narrow `server/discover` compatibility handling required by the tunnel and proxies all normal MCP traffic to CodexPro. It deliberately does not add or rename any tools yet.
+The host process exposes five lifecycle tools and the normal CodexPro tool set.
+Every CodexPro tool has an additional required `sandbox_id`; chat2shell strips that routing field and forwards the remaining arguments to CodexPro inside the selected microVM.
+Calls to the same sandbox are serialized, while different conversations can reuse the same stable ID returned by `sandbox_list`.
 
-## Boundaries
+## Security boundary
 
-- `src/mcp`: the public MCP transport and compatibility boundary.
-- `src/auth`: an authentication provider contract. The active provider is intentionally single-user; OAuth is not implemented yet.
-- `src/workspaces`: stable workspace aliases for future state that must survive individual tunnel requests.
-- `src/sandbox`: the sandbox lifecycle contract. No sandbox tools are exposed yet.
-- `scripts`: local process supervision and Secure MCP Tunnel wiring.
+- CodexPro never runs on the host.
+- ChatGPT cannot invoke raw `sbx`, host shell commands, sudo, or the host Docker socket.
+- A sandbox receives full shell and sudo-equivalent freedom only inside its microVM, including its own Docker Engine.
+- A managed workspace is the only host path mounted automatically.
+- An arbitrary `workspace_path` creates a pending approval and never mounts the path by itself.
+- Host paths must resolve below `CHAT2SHELL_ALLOWED_HOST_ROOTS`; broad and credential-bearing paths are rejected.
+- `clone` is the default mode for host repositories and keeps edits in a private VM clone.
+- `direct` provides read-write access to exactly one locally approved host directory.
+- CodexPro endpoints use random bearer tokens and dynamically allocated loopback ports.
+- Tunnel credentials remain outside this repository and are never read by the TypeScript application.
 
-Secrets remain outside the repository under `/home/retn0/.secrets/tunnel-client` by default. The tunnel API key is passed to `tunnel-client` as a file reference and is never loaded by the TypeScript application.
+This is currently a single-owner system using the fixed principal `local-owner`.
+OAuth is intentionally deferred, so the Secure MCP Tunnel and ChatGPT app must remain private to the owner.
 
-## Development
+## Workspace and sandbox lifecycle
+
+Calling `sandbox_create` without a path creates two independent identities:
+
+```text
+sandbox_id:   sbx_...
+workspace_id: ws_...
+workspace:    ~/.chat2shell/workspaces/ws_...
+```
+
+The sandbox expires after 30 minutes of inactivity and has a four-hour hard lifetime by default.
+Tool activity renews only the idle deadline, never the hard deadline.
+Destroying an active sandbox removes its microVM but retains a managed workspace for seven days so a new sandbox can attach using the same `workspace_id`.
+After the retention window, the reaper moves it to `~/.chat2shell/trash`; registered host workspaces are never deleted by chat2shell.
+
+## Setup
+
+Requirements are Node.js 22 or newer, pnpm, Docker Sandboxes (`sbx`), and the previously installed Secure MCP Tunnel client.
 
 ```bash
 pnpm install
+./scripts/setup-template.sh
 pnpm check
+pnpm test:integration
 ```
 
-Run a local-only stack on the default ports:
+`setup-template.sh` creates the local `chat2shell-codexpro:0.30.0` sandbox template once.
+The template contains CodexPro and its npm dependencies, but no workspace, application source, credentials, or tunnel secret.
+
+Run locally without opening the tunnel:
 
 ```bash
 CHAT2SHELL_ENABLE_TUNNEL=0 ./scripts/run.sh
 ```
 
-Run the tunnel-backed stack used by the registered ChatGPT app:
+Run with the configured Secure MCP Tunnel:
 
 ```bash
 ./scripts/run.sh
 ```
 
-Inspect or stop it with:
+Inspect or stop the runtime:
 
 ```bash
 ./scripts/status.sh
 ./scripts/stop.sh
 ```
 
-Runtime settings can be overridden with the variables documented in `.env.example`. `.env` files are ignored, but tunnel credentials should continue to live in the external secret directory rather than an environment file.
+## Host workspace approval
 
-## Deliberately deferred
+When ChatGPT requests a new host path, `sandbox_create` returns an `approval_id` instead of creating a sandbox.
+Review and decide it locally:
 
-- OAuth and multi-user identity.
-- Approval records for host mounts and high-impact actions.
-- Docker sandbox create, inspect, execute, and destroy tools.
-- Persistent state storage and a monitoring dashboard.
-- Reboot persistence or a system service.
+```bash
+pnpm cli approval list
+pnpm cli approval approve approval_...
+pnpm cli approval reject approval_...
+```
 
-These are deferred so each capability can be designed and tested against actual usage without changing the tunnel or public MCP boundary again.
+A host operator can also register a path directly:
+
+```bash
+pnpm cli workspace add /home/retn0/repositories/nbsp1221/example --mode clone
+pnpm cli workspace add /home/retn0/repositories/nbsp1221/example --mode direct
+pnpm cli workspace list
+```
+
+After approval, call `sandbox_create` with the returned `workspace_id`.
+Use `direct` only when immediate edits to the host checkout are intended.
+Full bash inside a direct sandbox can modify every file in that approved directory, including repository metadata such as `.git`.
+Unexported changes in a private clone disappear when its sandbox is destroyed, so commit and fetch them before deletion.
+
+## MCP workflow
+
+```json
+{"workspace_mode":"managed"}
+```
+
+Pass the returned sandbox ID to every CodexPro tool:
+
+```json
+{"sandbox_id":"sbx_...","command":"pnpm test"}
+```
+
+Other conversations can find and reuse it:
+
+```text
+sandbox_list -> sandbox_get -> read/search/bash/... with sandbox_id
+```
+
+Available management tools are `sandbox_create`, `sandbox_list`, `sandbox_get`, `sandbox_destroy`, and `workspace_list`.
+
+## Configuration
+
+See `.env.example` for all settings.
+Important defaults are:
+
+- data: `~/.chat2shell`
+- state database: `~/.chat2shell/state/chat2shell.sqlite`
+- managed workspaces: `~/.chat2shell/workspaces`
+- host allow root: `~/repositories`
+- template: `chat2shell-codexpro:0.30.0`
+- idle timeout: 30 minutes
+- maximum lifetime: 4 hours
+- managed workspace retention: 7 days
+
+Reboot persistence, OAuth, the monitoring dashboard, and approval UI are deliberately deferred.

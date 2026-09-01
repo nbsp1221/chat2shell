@@ -1,22 +1,27 @@
 {
   "name": "chat2shell",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "A private MCP gateway for controlled shell and sandbox access from ChatGPT.",
+  "description": "A private MCP control plane for isolated shell and sandbox access from ChatGPT.",
   "type": "module",
   "packageManager": "pnpm@11.23.0",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "pnpm clean && tsc -p tsconfig.json",
+    "clean": "node scripts/clean-dist.mjs",
+    "cli": "node dist/src/cli/main.js",
     "check": "pnpm typecheck && pnpm test",
     "start": "node dist/src/mcp/main.js",
     "test": "pnpm build && node --test dist/test/**/*.test.js",
+    "test:integration": "pnpm build && CHAT2SHELL_RUN_SBX_INTEGRATION=1 node --test dist/test/sbx-integration.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "codexpro": "0.30.0"
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "codexpro": "0.30.0",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

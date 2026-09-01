@@ -1,10 +1,15 @@
 import http, { type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { AppConfig } from "../config.js";
 import type { AuthProvider } from "../auth/provider.js";
-import type { GatewayConfig } from "../config.js";
 import { sessionlessDiscoverResponse } from "./compatibility.js";
+import { createControlServer, type ControlServerDependencies } from "./control-server.js";
+
+type ControlServerWithoutPrincipal = Omit<ControlServerDependencies, "principalId">;
 
 export interface GatewayDependencies {
   readonly authProvider: AuthProvider;
+  readonly controlServer: ControlServerWithoutPrincipal;
 }
 
 function sendJson(response: ServerResponse, statusCode: number, value: unknown): void {
@@ -17,97 +22,72 @@ function sendJson(response: ServerResponse, statusCode: number, value: unknown):
   response.end(payload);
 }
 
-function proxyRequest(
-  request: IncomingMessage,
-  response: ServerResponse,
-  body: Buffer,
-  upstream: URL,
-): void {
-  const requestUrl = new URL(request.url ?? "/mcp", "http://localhost");
-  const headers = { ...request.headers, host: upstream.host };
-  delete headers["content-length"];
-
-  const upstreamRequest = http.request(
-    {
-      protocol: upstream.protocol,
-      hostname: upstream.hostname,
-      port: upstream.port,
-      path: `${upstream.pathname}${requestUrl.search}`,
-      method: request.method,
-      headers,
-    },
-    (upstreamResponse) => {
-      response.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers);
-      upstreamResponse.pipe(response);
-    },
-  );
-
-  upstreamRequest.on("error", (error) => {
-    if (response.writableEnded) return;
-    sendJson(response, 502, { error: "upstream_unavailable", message: error.message });
-  });
-  request.on("aborted", () => upstreamRequest.destroy());
-  if (body.length > 0) upstreamRequest.write(body);
-  upstreamRequest.end();
+async function readBody(request: IncomingMessage, maxBodyBytes: number): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let receivedBytes = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.from(chunk);
+    receivedBytes += buffer.length;
+    if (receivedBytes > maxBodyBytes) throw new Error("payload_too_large");
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks);
 }
 
 async function handleRequest(
   request: IncomingMessage,
   response: ServerResponse,
-  config: GatewayConfig,
+  config: AppConfig,
   dependencies: GatewayDependencies,
 ): Promise<void> {
   const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? config.host}`);
-
   if (requestUrl.pathname === "/healthz") {
     sendJson(response, 200, { status: "ok" });
     return;
   }
-
   if (requestUrl.pathname !== "/mcp") {
-    response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-    response.end("Not found");
+    sendJson(response, 404, { error: "not_found" });
+    return;
+  }
+  if (request.method !== "POST") {
+    sendJson(response, 405, { jsonrpc: "2.0", id: null, error: { code: -32000, message: "Method not allowed" } });
     return;
   }
 
-  await dependencies.authProvider.authenticate(request.headers);
+  const principal = await dependencies.authProvider.authenticate(request.headers);
+  const body = await readBody(request, config.maxBodyBytes);
+  const compatibilityResponse = sessionlessDiscoverResponse(request.headers, body);
+  if (compatibilityResponse) {
+    sendJson(response, 200, compatibilityResponse);
+    return;
+  }
+  let parsedBody: unknown;
+  try {
+    parsedBody = JSON.parse(body.toString("utf8"));
+  } catch {
+    sendJson(response, 400, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
+    return;
+  }
 
-  const chunks: Buffer[] = [];
-  let receivedBytes = 0;
-
-  request.on("data", (chunk: Buffer) => {
-    receivedBytes += chunk.length;
-    if (receivedBytes > config.maxBodyBytes) {
-      response.writeHead(413, { "content-type": "text/plain; charset=utf-8" });
-      response.end("Payload too large");
-      request.destroy();
-      return;
-    }
-    chunks.push(chunk);
-  });
-
-  request.on("end", () => {
-    if (response.writableEnded) return;
-    const body = Buffer.concat(chunks);
-
-    if (request.method === "POST") {
-      const compatibilityResponse = sessionlessDiscoverResponse(request.headers, body);
-      if (compatibilityResponse) {
-        sendJson(response, 200, compatibilityResponse);
-        return;
-      }
-    }
-
-    proxyRequest(request, response, body, config.upstreamUrl);
-  });
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  const mcpServer = createControlServer({ ...dependencies.controlServer, principalId: principal.id });
+  await mcpServer.connect(transport);
+  try {
+    await transport.handleRequest(request, response, parsedBody);
+  } finally {
+    await transport.close();
+    await mcpServer.close();
+  }
 }
 
-export function createGateway(config: GatewayConfig, dependencies: GatewayDependencies): Server {
+export function createGateway(config: AppConfig, dependencies: GatewayDependencies): Server {
   return http.createServer((request, response) => {
     handleRequest(request, response, config, dependencies).catch((error: unknown) => {
-      if (response.writableEnded) return;
-      const message = error instanceof Error ? error.message : "Unknown gateway error";
-      sendJson(response, 500, { error: "gateway_error", message });
+      if (response.writableEnded || response.headersSent) return;
+      const status = error instanceof Error && error.message === "payload_too_large" ? 413 : 500;
+      const message = status === 413 ? "Payload too large" : "Internal chat2shell error";
+      sendJson(response, status, { error: status === 413 ? "payload_too_large" : "internal_error", message });
+      if (status === 500) console.error(error);
     });
   });
 }
