@@ -86,7 +86,7 @@ export class SandboxService {
     try {
       const runtime = await this.#driver.create(sandbox.runtimeName, workspace);
       const authToken = randomBytes(32).toString("hex");
-      await this.#driver.startCodexPro(sandbox.runtimeName, runtime.runtimeRoot, authToken, this.#config.codexProToolMode);
+      await this.#driver.startCodexPro(sandbox.runtimeName, runtime.runtimeRoot, authToken);
       await this.#driver.waitUntilHealthy(runtime.endpoint, authToken);
       const running: Sandbox = { ...sandbox, ...runtime, authToken, status: "running" };
       this.#database.saveSandbox(running);
@@ -100,7 +100,7 @@ export class SandboxService {
   }
 
   list(ownerId: string): readonly SandboxSummary[] {
-    return this.#database.listSandboxes(ownerId, true).map((sandbox) => this.#summarize(sandbox));
+    return this.#database.listCurrentSandboxes(ownerId).map((sandbox) => this.#summarize(sandbox));
   }
 
   get(ownerId: string, sandboxId: string): SandboxSummary {
@@ -123,13 +123,22 @@ export class SandboxService {
       if (now >= sandbox.maxExpiresAt) {
         throw new Error(`Sandbox reached its maximum lifetime: ${sandboxId}`);
       }
-      if (!(await this.#driver.isHealthy(sandbox.endpoint, sandbox.authToken))) {
-        await this.#driver.startCodexPro(sandbox.runtimeName, sandbox.runtimeRoot, sandbox.authToken, this.#config.codexProToolMode);
-        await this.#driver.waitUntilHealthy(sandbox.endpoint, sandbox.authToken);
+      if (now >= sandbox.expiresAt) {
+        throw new Error(`Sandbox expired after inactivity: ${sandboxId}`);
       }
-      const updated = { ...sandbox, lastActivityAt: now, expiresAt: Math.min(now + this.#config.idleTimeoutMs, sandbox.maxExpiresAt) };
-      this.#database.saveSandbox(updated);
-      return operation(updated);
+      if (!(await this.#driver.isHealthy(sandbox.endpoint, sandbox.authToken))) {
+        const message = "CodexPro is unavailable; destroy this sandbox and create a new one";
+        this.#database.saveSandbox({ ...sandbox, status: "failed", error: message });
+        throw new Error(`${message}: ${sandboxId}`);
+      }
+      const result = await operation(sandbox);
+      const completedAt = this.#now();
+      this.#database.saveSandbox({
+        ...sandbox,
+        lastActivityAt: completedAt,
+        expiresAt: Math.min(completedAt + this.#config.idleTimeoutMs, sandbox.maxExpiresAt),
+      });
+      return result;
     });
   }
 
@@ -143,7 +152,7 @@ export class SandboxService {
         await this.#driver.remove(sandbox.runtimeName);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.#database.saveSandbox({ ...sandbox, status: "running", error: `destroy failed: ${message}` });
+        this.#database.saveSandbox({ ...sandbox, error: `destroy failed: ${message}` });
         throw error;
       }
       for (const listener of this.#destroyListeners) await listener(sandbox.id);
@@ -169,7 +178,7 @@ export class SandboxService {
 
   async reconcile(): Promise<void> {
     const runtimes = new Map((await this.#driver.list()).map((runtime) => [runtime.name, runtime]));
-    for (const sandbox of this.#database.listSandboxes(undefined, true)) {
+    for (const sandbox of this.#database.listActiveSandboxes()) {
       const runtime = runtimes.get(sandbox.runtimeName);
       if (sandbox.status === "destroying") {
         if (runtime) await this.#driver.remove(sandbox.runtimeName);
@@ -177,11 +186,16 @@ export class SandboxService {
         this.#database.saveSandbox({ ...sandbox, status: "destroyed", endpoint: undefined, authToken: undefined, destroyedAt });
         const workspace = this.#database.getWorkspace(sandbox.workspaceId);
         if (workspace?.kind === "managed") this.#workspaces.retainManaged(workspace, destroyedAt + this.#config.workspaceRetentionMs);
-      } else if (!runtime) {
-        this.#database.saveSandbox({ ...sandbox, status: "failed", error: "sbx runtime is missing", destroyedAt: this.#now() });
-      } else if (sandbox.status === "creating") {
-        await this.#driver.remove(sandbox.runtimeName);
-        this.#database.saveSandbox({ ...sandbox, status: "failed", error: "controller stopped during sandbox creation", destroyedAt: this.#now() });
+      } else {
+        if (runtime) await this.#driver.remove(sandbox.runtimeName);
+        this.#database.saveSandbox({
+          ...sandbox,
+          status: "failed",
+          error: "chat2shell restarted; destroy this sandbox and create a new one",
+          destroyedAt: this.#now(),
+          endpoint: undefined,
+          authToken: undefined,
+        });
       }
     }
   }

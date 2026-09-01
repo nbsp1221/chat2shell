@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-template="${CHAT2SHELL_SANDBOX_TEMPLATE:-chat2shell-codexpro:0.30.0}"
-codexpro_version="${CHAT2SHELL_CODEXPRO_VERSION:-0.30.0}"
+template="chat2shell-codexpro:0.30.0"
 
 if sbx template ls --json | node -e '
 let input = "";
@@ -26,7 +25,7 @@ cleanup() {
 trap cleanup EXIT
 
 sbx create --quiet --name "$bootstrap_name" --cpus 1 --memory 2g shell "$bootstrap_dir"
-sbx exec -u root "$bootstrap_name" npm install --global --omit=dev "codexpro@$codexpro_version"
+sbx exec -u root "$bootstrap_name" npm install --global --omit=dev "codexpro@0.30.0"
 sbx stop "$bootstrap_name"
 sbx template save "$bootstrap_name" "$template"
 printf 'Created sandbox template: %s\n' "$template"

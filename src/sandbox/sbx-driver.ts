@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import type { Workspace } from "../domain/types.js";
 
@@ -24,7 +24,7 @@ export interface RuntimeInfo {
 export interface SandboxDriver {
   assertReady(): Promise<void>;
   create(runtimeName: string, workspace: Workspace): Promise<{ endpoint: string; runtimeRoot: string }>;
-  startCodexPro(runtimeName: string, runtimeRoot: string, authToken: string, toolMode: string): Promise<void>;
+  startCodexPro(runtimeName: string, runtimeRoot: string, authToken: string): Promise<void>;
   waitUntilHealthy(endpoint: string, authToken: string, timeoutMs?: number): Promise<void>;
   isHealthy(endpoint: string, authToken: string): Promise<boolean>;
   remove(runtimeName: string): Promise<void>;
@@ -37,6 +37,7 @@ export class SbxDriver implements SandboxDriver {
   readonly #cpus: number;
   readonly #memory: string;
   readonly #sandboxPort: number;
+  readonly #codexProProcesses = new Map<string, ChildProcess>();
 
   constructor(options: { binary: string; template: string; cpus: number; memory: string; sandboxPort: number }) {
     this.#binary = options.binary;
@@ -56,7 +57,8 @@ export class SbxDriver implements SandboxDriver {
 
   async create(runtimeName: string, workspace: Workspace): Promise<{ endpoint: string; runtimeRoot: string }> {
     const args = ["create", "--quiet", "--name", runtimeName, "--template", this.#template,
-      "--cpus", String(this.#cpus), "--memory", this.#memory, "--publish", String(this.#sandboxPort)];
+      "--cpus", String(this.#cpus), "--memory", this.#memory, "--publish", String(this.#sandboxPort),
+      "--deny-network", "openrouter.ai"];
     if (workspace.mode === "clone") args.push("--clone");
     args.push("shell", workspace.root);
     await this.#run(args, 180_000);
@@ -70,10 +72,33 @@ export class SbxDriver implements SandboxDriver {
     return { endpoint: `http://127.0.0.1:${port.host_port}/mcp`, runtimeRoot: rootOutput.trim() };
   }
 
-  async startCodexPro(runtimeName: string, runtimeRoot: string, authToken: string, toolMode: string): Promise<void> {
-    const command = "nohup codexpro-mcp-http --root \"$1\" --allow-root \"$1\" --host 0.0.0.0 --port \"$2\" --bash full --write workspace --tool-mode \"$3\" >/tmp/chat2shell-codexpro.log 2>&1 </dev/null &";
-    await this.#run(["exec", "-e", `CODEXPRO_HTTP_TOKEN=${authToken}`, runtimeName, "sh", "-c", command,
-      "chat2shell", runtimeRoot, String(this.#sandboxPort), toolMode]);
+  async startCodexPro(runtimeName: string, runtimeRoot: string, authToken: string): Promise<void> {
+    if (this.#codexProProcesses.has(runtimeName)) throw new Error(`CodexPro is already running in ${runtimeName}`);
+    const child = spawn(this.#binary, [
+      "exec", "-i", "-e", "CODEXPRO_HTTP_TOKEN", runtimeName,
+      "codexpro-mcp-http",
+      "--root", runtimeRoot,
+      "--allow-root", runtimeRoot,
+      "--host", "0.0.0.0",
+      "--port", String(this.#sandboxPort),
+      "--bash", "full",
+      "--write", "workspace",
+      "--tool-mode", "standard",
+    ], {
+      env: { ...process.env, CODEXPRO_HTTP_TOKEN: authToken },
+      stdio: ["pipe", "ignore", "inherit"],
+    });
+    this.#codexProProcesses.set(runtimeName, child);
+    child.once("exit", () => {
+      if (this.#codexProProcesses.get(runtimeName) === child) this.#codexProProcesses.delete(runtimeName);
+    });
+    await new Promise<void>((resolve, reject) => {
+      child.once("spawn", resolve);
+      child.once("error", reject);
+    }).catch((error) => {
+      this.#codexProProcesses.delete(runtimeName);
+      throw error;
+    });
   }
 
   async waitUntilHealthy(endpoint: string, authToken: string, timeoutMs = 15_000): Promise<void> {
@@ -108,8 +133,12 @@ export class SbxDriver implements SandboxDriver {
   }
 
   async remove(runtimeName: string): Promise<void> {
-    if (!(await this.list()).some((runtime) => runtime.name === runtimeName)) return;
-    await this.#run(["rm", "--force", runtimeName], 120_000);
+    if ((await this.list()).some((runtime) => runtime.name === runtimeName)) {
+      await this.#run(["rm", "--force", runtimeName], 120_000);
+    }
+    const child = this.#codexProProcesses.get(runtimeName);
+    this.#codexProProcesses.delete(runtimeName);
+    child?.kill("SIGTERM");
   }
 
   async list(): Promise<readonly RuntimeInfo[]> {

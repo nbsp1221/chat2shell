@@ -19,7 +19,7 @@ function config(): AppConfig {
     host: "127.0.0.1", port: 0, maxBodyBytes: 1024 * 1024, dataRoot: "/tmp/chat2shell", workspaceRoot: "/tmp/chat2shell/workspaces",
     stateDir: "/tmp/chat2shell/state", databasePath: ":memory:", allowedHostRoots: ["/tmp"], sbxBinary: "sbx",
     sandboxTemplate: "test:latest", sandboxCpus: 1, sandboxMemory: "1g", sandboxPort: 18_787,
-    idleTimeoutMs: 1_000, maxLifetimeMs: 10_000, workspaceRetentionMs: 10_000, reaperIntervalMs: 1_000, codexProToolMode: "standard",
+    idleTimeoutMs: 1_000, maxLifetimeMs: 10_000, workspaceRetentionMs: 10_000, reaperIntervalMs: 1_000,
   };
 }
 

@@ -19,20 +19,11 @@ export interface AppConfig {
   readonly maxLifetimeMs: number;
   readonly workspaceRetentionMs: number;
   readonly reaperIntervalMs: number;
-  readonly codexProToolMode: "minimal" | "standard" | "full";
-}
-
-function readInteger(value: string | undefined, fallback: number, name: string, minimum = 1): number {
-  const parsed = Number(value ?? fallback);
-  if (!Number.isSafeInteger(parsed) || parsed < minimum) {
-    throw new Error(`${name} must be an integer greater than or equal to ${minimum}`);
-  }
-  return parsed;
 }
 
 function readPort(value: string | undefined, fallback: number, name: string): number {
-  const port = readInteger(value, fallback, name);
-  if (port > 65_535) throw new Error(`${name} must be no greater than 65535`);
+  const port = Number(value ?? fallback);
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) throw new Error(`${name} must be an integer from 1 to 65535`);
   return port;
 }
 
@@ -43,12 +34,6 @@ function expandHome(value: string): string {
 
 function resolvePath(value: string): string {
   return path.resolve(expandHome(value));
-}
-
-function readToolMode(value: string | undefined): AppConfig["codexProToolMode"] {
-  if (value === undefined) return "standard";
-  if (value === "minimal" || value === "standard" || value === "full") return value;
-  throw new Error("CHAT2SHELL_CODEXPRO_TOOL_MODE must be minimal, standard, or full");
 }
 
 export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -64,21 +49,20 @@ export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): App
   return {
     host: environment.CHAT2SHELL_HOST ?? "127.0.0.1",
     port: readPort(environment.CHAT2SHELL_PORT, 18_788, "CHAT2SHELL_PORT"),
-    maxBodyBytes: readInteger(environment.CHAT2SHELL_MAX_BODY_BYTES, 20 * 1024 * 1024, "CHAT2SHELL_MAX_BODY_BYTES"),
+    maxBodyBytes: 20 * 1024 * 1024,
     dataRoot,
     workspaceRoot,
     stateDir,
     databasePath: resolvePath(environment.CHAT2SHELL_DATABASE_PATH ?? path.join(stateDir, "chat2shell.sqlite")),
     allowedHostRoots,
-    sbxBinary: environment.CHAT2SHELL_SBX_BINARY ?? "sbx",
-    sandboxTemplate: environment.CHAT2SHELL_SANDBOX_TEMPLATE ?? "chat2shell-codexpro:0.30.0",
-    sandboxCpus: readInteger(environment.CHAT2SHELL_SANDBOX_CPUS, 2, "CHAT2SHELL_SANDBOX_CPUS"),
-    sandboxMemory: environment.CHAT2SHELL_SANDBOX_MEMORY ?? "4g",
-    sandboxPort: readPort(environment.CHAT2SHELL_SANDBOX_PORT, 18_787, "CHAT2SHELL_SANDBOX_PORT"),
-    idleTimeoutMs: readInteger(environment.CHAT2SHELL_IDLE_TIMEOUT_MS, 30 * 60_000, "CHAT2SHELL_IDLE_TIMEOUT_MS"),
-    maxLifetimeMs: readInteger(environment.CHAT2SHELL_MAX_LIFETIME_MS, 4 * 60 * 60_000, "CHAT2SHELL_MAX_LIFETIME_MS"),
-    workspaceRetentionMs: readInteger(environment.CHAT2SHELL_WORKSPACE_RETENTION_MS, 7 * 24 * 60 * 60_000, "CHAT2SHELL_WORKSPACE_RETENTION_MS"),
-    reaperIntervalMs: readInteger(environment.CHAT2SHELL_REAPER_INTERVAL_MS, 60_000, "CHAT2SHELL_REAPER_INTERVAL_MS"),
-    codexProToolMode: readToolMode(environment.CHAT2SHELL_CODEXPRO_TOOL_MODE),
+    sbxBinary: "sbx",
+    sandboxTemplate: "chat2shell-codexpro:0.30.0",
+    sandboxCpus: 2,
+    sandboxMemory: "4g",
+    sandboxPort: 18_787,
+    idleTimeoutMs: 30 * 60_000,
+    maxLifetimeMs: 4 * 60 * 60_000,
+    workspaceRetentionMs: 7 * 24 * 60 * 60_000,
+    reaperIntervalMs: 60_000,
   };
 }

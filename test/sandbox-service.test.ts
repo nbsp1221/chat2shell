@@ -12,16 +12,18 @@ import { WorkspaceService } from "../src/workspaces/service.js";
 class FakeDriver implements SandboxDriver {
   readonly runtimes = new Map<string, RuntimeInfo>();
   createCalls = 0;
+  startCalls = 0;
   removeCalls = 0;
+  healthy = true;
   async assertReady(): Promise<void> {}
   async create(name: string): Promise<{ endpoint: string; runtimeRoot: string }> {
     this.createCalls += 1;
     this.runtimes.set(name, { name, status: "running" });
     return { endpoint: "http://127.0.0.1:1234/mcp", runtimeRoot: "/workspace" };
   }
-  async startCodexPro(): Promise<void> {}
+  async startCodexPro(): Promise<void> { this.startCalls += 1; }
   async waitUntilHealthy(): Promise<void> {}
-  async isHealthy(): Promise<boolean> { return true; }
+  async isHealthy(): Promise<boolean> { return this.healthy; }
   async remove(name: string): Promise<void> { this.removeCalls += 1; this.runtimes.delete(name); }
   async list(): Promise<readonly RuntimeInfo[]> { return [...this.runtimes.values()]; }
 }
@@ -32,7 +34,7 @@ function config(base: string): AppConfig {
     workspaceRoot: path.join(base, "data", "workspaces"), stateDir: path.join(base, "state"), databasePath: ":memory:",
     allowedHostRoots: [path.join(base, "allowed")], sbxBinary: "sbx", sandboxTemplate: "test:latest",
     sandboxCpus: 1, sandboxMemory: "1g", sandboxPort: 18_787, idleTimeoutMs: 1_000,
-    maxLifetimeMs: 10_000, workspaceRetentionMs: 7_000, reaperIntervalMs: 100, codexProToolMode: "standard",
+    maxLifetimeMs: 10_000, workspaceRetentionMs: 7_000, reaperIntervalMs: 100,
   };
 }
 
@@ -75,4 +77,43 @@ test("host workspace requests stop at approval_required", async (context) => {
   assert.equal(result.status, "approval_required");
   assert.match(result.approval?.id ?? "", /^approval_/);
   assert.equal(driver.createCalls, 0);
+});
+
+test("an unavailable runtime becomes an explicit failed sandbox without automatic restart", async (context) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "chat2shell-failed-"));
+  fs.mkdirSync(path.join(base, "allowed"));
+  const database = new StateDatabase(":memory:");
+  const appConfig = config(base);
+  const workspaces = new WorkspaceService({ database, dataRoot: appConfig.dataRoot, workspaceRoot: appConfig.workspaceRoot, allowedHostRoots: appConfig.allowedHostRoots });
+  const driver = new FakeDriver();
+  const service = new SandboxService({ database, workspaces, driver, config: appConfig });
+  context.after(() => { database.close(); fs.rmSync(base, { recursive: true, force: true }); });
+
+  const created = await service.create("owner", {});
+  assert(created.sandbox);
+  driver.healthy = false;
+
+  await assert.rejects(() => service.readyForTool("owner", created.sandbox!.id), /destroy this sandbox and create a new one/);
+  assert.equal(driver.startCalls, 1, "health failure must not start another CodexPro process");
+  assert.equal(service.list("owner")[0]?.status, "failed");
+});
+
+test("a controller restart invalidates runtimes that the new controller does not own", async (context) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "chat2shell-reconcile-"));
+  fs.mkdirSync(path.join(base, "allowed"));
+  const database = new StateDatabase(":memory:");
+  const appConfig = config(base);
+  const workspaces = new WorkspaceService({ database, dataRoot: appConfig.dataRoot, workspaceRoot: appConfig.workspaceRoot, allowedHostRoots: appConfig.allowedHostRoots });
+  const driver = new FakeDriver();
+  const firstController = new SandboxService({ database, workspaces, driver, config: appConfig });
+  context.after(() => { database.close(); fs.rmSync(base, { recursive: true, force: true }); });
+
+  const created = await firstController.create("owner", {});
+  assert(created.sandbox);
+  const restartedController = new SandboxService({ database, workspaces, driver, config: appConfig });
+  await restartedController.reconcile();
+
+  assert.equal(driver.removeCalls, 1);
+  assert.equal(restartedController.list("owner")[0]?.status, "failed");
+  assert.match(restartedController.list("owner")[0]?.error ?? "", /chat2shell restarted/);
 });

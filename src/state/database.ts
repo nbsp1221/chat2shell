@@ -223,13 +223,14 @@ export class StateDatabase {
     return row ? sandboxFromRow(row) : undefined;
   }
 
-  listSandboxes(ownerId?: string, activeOnly = false): readonly Sandbox[] {
-    const conditions: string[] = [];
-    const values: string[] = [];
-    if (ownerId) { conditions.push("owner_id = ?"); values.push(ownerId); }
-    if (activeOnly) conditions.push("status IN ('creating', 'running', 'destroying')");
-    const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
-    return this.#database.prepare(`SELECT * FROM sandboxes${where} ORDER BY created_at DESC`).all(...values).map(sandboxFromRow);
+  listCurrentSandboxes(ownerId: string): readonly Sandbox[] {
+    return this.#database.prepare("SELECT * FROM sandboxes WHERE owner_id = ? AND status != 'destroyed' ORDER BY created_at DESC")
+      .all(ownerId).map(sandboxFromRow);
+  }
+
+  listActiveSandboxes(): readonly Sandbox[] {
+    return this.#database.prepare("SELECT * FROM sandboxes WHERE status IN ('creating', 'running', 'destroying') ORDER BY created_at DESC")
+      .all().map(sandboxFromRow);
   }
 
   listExpiredSandboxes(now: number): readonly Sandbox[] {

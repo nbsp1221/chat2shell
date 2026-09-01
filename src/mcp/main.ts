@@ -1,6 +1,6 @@
 import { SingleUserAuthProvider } from "../auth/single-user-provider.js";
 import { CodexProClientPool } from "../codexpro/client-pool.js";
-import { loadCodexProToolManifest } from "../codexpro/tool-manifest.js";
+import { codexProToolManifest } from "../codexpro/tool-manifest.js";
 import { loadAppConfig } from "../config.js";
 import { SbxDriver } from "../sandbox/sbx-driver.js";
 import { SandboxService } from "../sandbox/service.js";
@@ -27,7 +27,7 @@ await driver.assertReady();
 const sandboxes = new SandboxService({ database, workspaces, driver, config });
 await sandboxes.reconcile();
 const codexPro = new CodexProClientPool(sandboxes);
-const codexProTools = await loadCodexProToolManifest(config.workspaceRoot, config.codexProToolMode);
+const codexProTools = codexProToolManifest();
 const server = createGateway(config, {
   authProvider: new SingleUserAuthProvider(),
   controlServer: { sandboxes, workspaces, codexPro, codexProTools },

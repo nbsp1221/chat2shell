@@ -24,7 +24,7 @@ const sandboxCreateTool: Tool = {
 const sandboxListTool: Tool = {
   name: "sandbox_list",
   title: "List Sandboxes",
-  description: "List active sandboxes owned by the current chat2shell principal. IDs can be reused from other conversations.",
+  description: "List running and failed sandboxes owned by the current chat2shell principal. Running IDs can be reused from other conversations; failed sandboxes must be destroyed.",
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 };
@@ -103,7 +103,7 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
     { name: "chat2shell", version: "0.2.0" },
     {
       capabilities: { tools: {} },
-      instructions: "Create or select an isolated sandbox first. Every CodexPro tool requires an explicit sandbox_id; never infer host access.",
+      instructions: "Create or select an isolated sandbox first. Every CodexPro tool requires an explicit sandbox_id. Bash is unrestricted inside the sandbox but never has host shell or host Docker access.",
     },
   );
   const codexTools = dependencies.codexProTools.map(scopedCodexProTool);
@@ -136,6 +136,7 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
           if (!codexToolNames.has(request.params.name)) throw new Error(`Unknown tool: ${request.params.name}`);
           const sandboxId = optionalString(args, "sandbox_id");
           if (!sandboxId) throw new Error("sandbox_id is required");
+          if ("workspace_id" in args) throw new Error("CodexPro workspace_id is internal; select the target with sandbox_id");
           const { sandbox_id: _sandboxId, ...upstreamArgs } = args;
           return await dependencies.codexPro.call(dependencies.principalId, sandboxId, request.params.name, upstreamArgs);
         }
