@@ -1,4 +1,5 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { createServer } from "node:net";
 import { promisify } from "node:util";
 import type { Workspace } from "../domain/types.js";
 
@@ -21,12 +22,18 @@ export interface RuntimeInfo {
   readonly status: string;
 }
 
+export interface PublishedPort {
+  readonly sandboxPort: number;
+  readonly hostPort: number;
+}
+
 export interface SandboxDriver {
   assertReady(): Promise<void>;
   create(runtimeName: string, workspace: Workspace): Promise<{ endpoint: string; runtimeRoot: string }>;
   startCodexPro(runtimeName: string, runtimeRoot: string, authToken: string): Promise<void>;
   waitUntilHealthy(endpoint: string, authToken: string, timeoutMs?: number): Promise<void>;
   isHealthy(endpoint: string, authToken: string): Promise<boolean>;
+  expose(runtimeName: string, sandboxPort: number): Promise<PublishedPort>;
   remove(runtimeName: string): Promise<void>;
   list(): Promise<readonly RuntimeInfo[]>;
 }
@@ -132,6 +139,16 @@ export class SbxDriver implements SandboxDriver {
     }
   }
 
+  async expose(runtimeName: string, sandboxPort: number): Promise<PublishedPort> {
+    const existing = await this.#publishedPort(runtimeName, sandboxPort);
+    if (existing) return existing;
+    const hostPort = await this.#availableHostPort();
+    await this.#run(["ports", runtimeName, "--publish", `0.0.0.0:${hostPort}:${sandboxPort}/tcp4`]);
+    const published = await this.#publishedPort(runtimeName, sandboxPort);
+    if (!published) throw new Error(`Sandbox ${runtimeName} did not publish port ${sandboxPort}`);
+    return published;
+  }
+
   async remove(runtimeName: string): Promise<void> {
     if ((await this.list()).some((runtime) => runtime.name === runtimeName)) {
       await this.#run(["rm", "--force", runtimeName], 120_000);
@@ -145,6 +162,28 @@ export class SbxDriver implements SandboxDriver {
     const { stdout } = await this.#run(["ls", "--json"]);
     const parsed = JSON.parse(stdout) as { sandboxes: SbxListItem[] };
     return parsed.sandboxes.map(({ name, status }) => ({ name, status }));
+  }
+
+  async #publishedPort(runtimeName: string, sandboxPort: number): Promise<PublishedPort | undefined> {
+    const { stdout } = await this.#run(["ports", runtimeName, "--json"]);
+    const ports = JSON.parse(stdout) as SbxPort[];
+    const port = ports.find((candidate) => candidate.host_ip === "0.0.0.0" && candidate.sandbox_port === sandboxPort && candidate.protocol === "tcp4");
+    return port ? { sandboxPort: port.sandbox_port, hostPort: port.host_port } : undefined;
+  }
+
+  async #availableHostPort(): Promise<number> {
+    const server = createServer();
+    return new Promise<number>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "0.0.0.0", () => {
+        const address = server.address();
+        server.close((error) => {
+          if (error) reject(error);
+          else if (!address || typeof address === "string") reject(new Error("Could not allocate a host port"));
+          else resolve(address.port);
+        });
+      });
+    });
   }
 
   async #run(args: readonly string[], timeout = 30_000): Promise<{ stdout: string; stderr: string }> {

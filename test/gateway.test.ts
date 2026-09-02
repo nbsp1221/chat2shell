@@ -37,6 +37,7 @@ async function rpc(url: string, id: number, method: string, params: Record<strin
 
 test("serves management tools itself instead of proxying to a host CodexPro", async (context) => {
   let listCalls = 0;
+  let exposedPort: number | undefined;
   const gateway = createGateway(config(), {
     authProvider: new SingleUserAuthProvider(),
     controlServer: {
@@ -44,6 +45,10 @@ test("serves management tools itself instead of proxying to a host CodexPro", as
         async create() { throw new Error("not used"); },
         list() { listCalls += 1; return []; },
         get() { throw new Error("not used"); },
+        async expose(_ownerId, sandboxId, port) {
+          exposedPort = port;
+          return { sandboxId, sandboxPort: port, hostPort: 32_000 };
+        },
         async destroy() { throw new Error("not used"); },
       },
       workspaces: { list() { return []; } },
@@ -57,8 +62,15 @@ test("serves management tools itself instead of proxying to a host CodexPro", as
   await rpc(url, 1, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } });
   const listed = await rpc(url, 2, "tools/list");
   const tools = (listed.result as { tools: Array<{ name: string }> }).tools;
-  assert.deepEqual(tools.map((tool) => tool.name), ["sandbox_create", "sandbox_list", "sandbox_get", "sandbox_destroy", "workspace_list"]);
+  assert.deepEqual(tools.map((tool) => tool.name), ["sandbox_create", "sandbox_list", "sandbox_get", "sandbox_expose", "sandbox_destroy", "workspace_list"]);
   const called = await rpc(url, 3, "tools/call", { name: "sandbox_list", arguments: {} });
   assert.equal((called.result as { structuredContent: { sandboxes: unknown[] } }).structuredContent.sandboxes.length, 0);
   assert.equal(listCalls, 1);
+  const exposed = await rpc(url, 4, "tools/call", { name: "sandbox_expose", arguments: { sandbox_id: "sbx_test", port: 3_000 } });
+  assert.deepEqual((exposed.result as { structuredContent: unknown }).structuredContent, {
+    sandboxId: "sbx_test",
+    sandboxPort: 3_000,
+    hostPort: 32_000,
+  });
+  assert.equal(exposedPort, 3_000);
 });
