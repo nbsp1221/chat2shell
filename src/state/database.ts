@@ -4,7 +4,6 @@ import { DatabaseSync } from "node:sqlite";
 import type { Approval, Sandbox, SandboxStatus, Workspace } from "../domain/types.js";
 
 type SqlValue = string | number | null;
-const legacyRetentionExtensionMs = 23 * 24 * 60 * 60_000;
 
 function optionalNumber(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
@@ -116,14 +115,6 @@ export class StateDatabase {
       CREATE UNIQUE INDEX IF NOT EXISTS one_active_sandbox_per_workspace
         ON sandboxes(owner_id, workspace_id) WHERE status IN ('creating', 'running', 'destroying');
     `);
-    const sandboxColumns = this.#database.prepare("PRAGMA table_info(sandboxes)").all() as Array<{ name: string }>;
-    if (sandboxColumns.some((column) => column.name === "max_expires_at")) {
-      this.#database.prepare(`UPDATE workspaces
-        SET retained_until = retained_until + ?
-        WHERE status = 'retained' AND retained_until IS NOT NULL`)
-        .run(legacyRetentionExtensionMs);
-      this.#database.exec("ALTER TABLE sandboxes DROP COLUMN max_expires_at");
-    }
   }
 
   insertWorkspace(workspace: Workspace): void {
