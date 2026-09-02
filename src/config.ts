@@ -16,7 +16,6 @@ export interface AppConfig {
   readonly sandboxMemory: string;
   readonly sandboxPort: number;
   readonly idleTimeoutMs: number;
-  readonly maxLifetimeMs: number;
   readonly workspaceRetentionMs: number;
   readonly reaperIntervalMs: number;
 }
@@ -60,9 +59,8 @@ export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): App
     sandboxCpus: 2,
     sandboxMemory: "4g",
     sandboxPort: 18_787,
-    idleTimeoutMs: 30 * 60_000,
-    maxLifetimeMs: 4 * 60 * 60_000,
-    workspaceRetentionMs: 7 * 24 * 60 * 60_000,
+    idleTimeoutMs: 24 * 60 * 60_000,
+    workspaceRetentionMs: 30 * 24 * 60 * 60_000,
     reaperIntervalMs: 60_000,
   };
 }

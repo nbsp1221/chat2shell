@@ -34,7 +34,7 @@ function config(base: string): AppConfig {
     workspaceRoot: path.join(base, "data", "workspaces"), stateDir: path.join(base, "state"), databasePath: ":memory:",
     allowedHostRoots: [path.join(base, "allowed")], sbxBinary: "sbx", sandboxTemplate: "test:latest",
     sandboxCpus: 1, sandboxMemory: "1g", sandboxPort: 18_787, idleTimeoutMs: 1_000,
-    maxLifetimeMs: 10_000, workspaceRetentionMs: 7_000, reaperIntervalMs: 100,
+    workspaceRetentionMs: 7_000, reaperIntervalMs: 100,
   };
 }
 
@@ -96,6 +96,87 @@ test("an unavailable runtime becomes an explicit failed sandbox without automati
   await assert.rejects(() => service.readyForTool("owner", created.sandbox!.id), /destroy this sandbox and create a new one/);
   assert.equal(driver.startCalls, 1, "health failure must not start another CodexPro process");
   assert.equal(service.list("owner")[0]?.status, "failed");
+});
+
+test("every completed tool call renews the idle deadline without an absolute lifetime", async (context) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "chat2shell-activity-"));
+  fs.mkdirSync(path.join(base, "allowed"));
+  const database = new StateDatabase(":memory:");
+  const appConfig = config(base);
+  const workspaces = new WorkspaceService({ database, dataRoot: appConfig.dataRoot, workspaceRoot: appConfig.workspaceRoot, allowedHostRoots: appConfig.allowedHostRoots });
+  const driver = new FakeDriver();
+  let now = 1_000;
+  const service = new SandboxService({ database, workspaces, driver, config: appConfig, now: () => now });
+  context.after(() => { database.close(); fs.rmSync(base, { recursive: true, force: true }); });
+
+  const created = await service.create("owner", {});
+  assert(created.sandbox);
+  const sandboxId = created.sandbox.id;
+
+  for (let call = 0; call < 30; call += 1) {
+    now += 500;
+    await service.withReady("owner", sandboxId, async () => undefined);
+  }
+  assert.equal(service.get("owner", sandboxId).expiresAt, now + appConfig.idleTimeoutMs);
+
+  now += 500;
+  await assert.rejects(
+    service.withReady("owner", sandboxId, async () => { throw new Error("tool failed"); }),
+    /tool failed/,
+  );
+  const afterFailure = service.get("owner", sandboxId);
+  assert.equal(afterFailure.lastActivityAt, now);
+  assert.equal(afterFailure.expiresAt, now + appConfig.idleTimeoutMs);
+});
+
+test("idle removal retains its managed workspace for the configured period", async (context) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "chat2shell-expiry-"));
+  fs.mkdirSync(path.join(base, "allowed"));
+  const database = new StateDatabase(":memory:");
+  const appConfig = config(base);
+  const workspaces = new WorkspaceService({ database, dataRoot: appConfig.dataRoot, workspaceRoot: appConfig.workspaceRoot, allowedHostRoots: appConfig.allowedHostRoots });
+  const driver = new FakeDriver();
+  let now = 1_000;
+  const service = new SandboxService({ database, workspaces, driver, config: appConfig, now: () => now });
+  context.after(() => { database.close(); fs.rmSync(base, { recursive: true, force: true }); });
+
+  const created = await service.create("owner", {});
+  assert(created.sandbox);
+  now += appConfig.idleTimeoutMs;
+
+  const result = await service.reap();
+  const workspace = workspaces.list("owner")[0];
+  assert.deepEqual(result.destroyed, [created.sandbox.id]);
+  assert.equal(workspace?.status, "retained");
+  assert.equal(workspace?.retainedUntil, now + appConfig.workspaceRetentionMs);
+});
+
+test("idle cleanup rechecks activity after an in-flight call", async (context) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "chat2shell-reaper-race-"));
+  fs.mkdirSync(path.join(base, "allowed"));
+  const database = new StateDatabase(":memory:");
+  const appConfig = config(base);
+  const workspaces = new WorkspaceService({ database, dataRoot: appConfig.dataRoot, workspaceRoot: appConfig.workspaceRoot, allowedHostRoots: appConfig.allowedHostRoots });
+  const driver = new FakeDriver();
+  let now = 1_000;
+  const service = new SandboxService({ database, workspaces, driver, config: appConfig, now: () => now });
+  context.after(() => { database.close(); fs.rmSync(base, { recursive: true, force: true }); });
+
+  const created = await service.create("owner", {});
+  assert(created.sandbox);
+  let finishCall!: () => void;
+  const inFlightCall = service.withReady("owner", created.sandbox.id, async () => {
+    await new Promise<void>((resolve) => { finishCall = resolve; });
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  now += appConfig.idleTimeoutMs;
+  const cleanup = service.reap();
+  finishCall();
+  await inFlightCall;
+
+  assert.deepEqual((await cleanup).destroyed, []);
+  assert.equal(service.get("owner", created.sandbox.id).status, "running");
 });
 
 test("a controller restart invalidates runtimes that the new controller does not own", async (context) => {

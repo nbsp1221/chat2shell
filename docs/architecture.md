@@ -87,10 +87,9 @@ CodexPro assigns its own path-derived workspace ID inside the microVM. That inte
 
 ## Expiration and failure
 
-The idle deadline moves forward with successful routing attempts but is capped by a hard maximum lifetime.
-The reaper destroys expired microVMs and retains managed workspaces for the configured grace period.
-Expired managed workspaces are moved into chat2shell's recoverable trash directory rather than deleted.
-Host workspaces are never moved or deleted.
+The lifecycle policy has four rules: a sandbox is removed after 24 hours without a tool call; an active sandbox has no maximum lifetime; a managed workspace is retained for 30 days after sandbox removal; and an expired managed workspace is moved into chat2shell's recoverable trash directory.
+Every tool call that reaches a running sandbox renews its idle deadline, whether the call succeeds or fails.
+The trash directory is not emptied automatically. Host workspaces are never moved or deleted because chat2shell does not own them.
 
 At controller startup, persisted active records are reconciled with `sbx ls`.
 Any microVM left by the previous controller is removed and its sandbox record becomes `failed` because the foreground CodexPro session belonged to that controller.

@@ -79,7 +79,6 @@ export class SandboxService {
       createdAt: now,
       lastActivityAt: now,
       expiresAt: now + this.#config.idleTimeoutMs,
-      maxExpiresAt: now + this.#config.maxLifetimeMs,
     };
     this.#database.insertSandbox(sandbox);
 
@@ -94,7 +93,9 @@ export class SandboxService {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await this.#driver.remove(sandbox.runtimeName).catch(() => undefined);
-      this.#database.saveSandbox({ ...sandbox, status: "failed", error: message, destroyedAt: this.#now() });
+      const destroyedAt = this.#now();
+      this.#database.saveSandbox({ ...sandbox, status: "failed", error: message, destroyedAt });
+      this.#retainManagedWorkspace(sandbox.workspaceId, destroyedAt);
       throw error;
     }
   }
@@ -120,9 +121,6 @@ export class SandboxService {
         throw new Error(`Sandbox is not running: ${sandboxId}`);
       }
       const now = this.#now();
-      if (now >= sandbox.maxExpiresAt) {
-        throw new Error(`Sandbox reached its maximum lifetime: ${sandboxId}`);
-      }
       if (now >= sandbox.expiresAt) {
         throw new Error(`Sandbox expired after inactivity: ${sandboxId}`);
       }
@@ -131,14 +129,16 @@ export class SandboxService {
         this.#database.saveSandbox({ ...sandbox, status: "failed", error: message });
         throw new Error(`${message}: ${sandboxId}`);
       }
-      const result = await operation(sandbox);
-      const completedAt = this.#now();
-      this.#database.saveSandbox({
-        ...sandbox,
-        lastActivityAt: completedAt,
-        expiresAt: Math.min(completedAt + this.#config.idleTimeoutMs, sandbox.maxExpiresAt),
-      });
-      return result;
+      try {
+        return await operation(sandbox);
+      } finally {
+        const completedAt = this.#now();
+        this.#database.saveSandbox({
+          ...sandbox,
+          lastActivityAt: completedAt,
+          expiresAt: completedAt + this.#config.idleTimeoutMs,
+        });
+      }
     });
   }
 
@@ -147,32 +147,21 @@ export class SandboxService {
       const sandbox = this.#database.getSandbox(sandboxId, ownerId);
       if (!sandbox) throw new Error(`Unknown sandbox: ${sandboxId}`);
       if (sandbox.status === "destroyed") return this.#summarize(sandbox);
-      this.#database.saveSandbox({ ...sandbox, status: "destroying" });
-      try {
-        await this.#driver.remove(sandbox.runtimeName);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.#database.saveSandbox({ ...sandbox, error: `destroy failed: ${message}` });
-        throw error;
-      }
-      for (const listener of this.#destroyListeners) await listener(sandbox.id);
-      const destroyedAt = this.#now();
-      const destroyed: Sandbox = { ...sandbox, status: "destroyed", destroyedAt, endpoint: undefined, authToken: undefined };
-      this.#database.saveSandbox(destroyed);
-      const workspace = this.#database.getWorkspace(sandbox.workspaceId);
-      if (workspace?.kind === "managed") this.#workspaces.retainManaged(workspace, destroyedAt + this.#config.workspaceRetentionMs);
-      return this.#summarize(destroyed);
+      return this.#removeSandbox(sandbox);
     });
   }
 
   async reap(): Promise<{ destroyed: readonly string[]; trashed: readonly string[] }> {
-    const now = this.#now();
     const destroyed: string[] = [];
-    for (const sandbox of this.#database.listExpiredSandboxes(now)) {
-      await this.destroy(sandbox.ownerId, sandbox.id);
-      destroyed.push(sandbox.id);
+    for (const candidate of this.#database.listExpiredSandboxes(this.#now())) {
+      await this.withLock(candidate.id, async () => {
+        const sandbox = this.#database.getSandbox(candidate.id, candidate.ownerId);
+        if (!sandbox || sandbox.status !== "running" || sandbox.expiresAt > this.#now()) return;
+        await this.#removeSandbox(sandbox);
+        destroyed.push(sandbox.id);
+      });
     }
-    const trashed = this.#workspaces.trashExpired(now).map((workspace) => workspace.id);
+    const trashed = this.#workspaces.trashExpired(this.#now()).map((workspace) => workspace.id);
     return { destroyed, trashed };
   }
 
@@ -184,18 +173,19 @@ export class SandboxService {
         if (runtime) await this.#driver.remove(sandbox.runtimeName);
         const destroyedAt = this.#now();
         this.#database.saveSandbox({ ...sandbox, status: "destroyed", endpoint: undefined, authToken: undefined, destroyedAt });
-        const workspace = this.#database.getWorkspace(sandbox.workspaceId);
-        if (workspace?.kind === "managed") this.#workspaces.retainManaged(workspace, destroyedAt + this.#config.workspaceRetentionMs);
+        this.#retainManagedWorkspace(sandbox.workspaceId, destroyedAt);
       } else {
         if (runtime) await this.#driver.remove(sandbox.runtimeName);
+        const destroyedAt = this.#now();
         this.#database.saveSandbox({
           ...sandbox,
           status: "failed",
           error: "chat2shell restarted; destroy this sandbox and create a new one",
-          destroyedAt: this.#now(),
+          destroyedAt,
           endpoint: undefined,
           authToken: undefined,
         });
+        this.#retainManagedWorkspace(sandbox.workspaceId, destroyedAt);
       }
     }
   }
@@ -215,6 +205,30 @@ export class SandboxService {
     }
   }
 
+  #retainManagedWorkspace(workspaceId: string, removedAt: number): void {
+    const workspace = this.#database.getWorkspace(workspaceId);
+    if (workspace?.kind === "managed") {
+      this.#workspaces.retainManaged(workspace, removedAt + this.#config.workspaceRetentionMs);
+    }
+  }
+
+  async #removeSandbox(sandbox: Sandbox): Promise<SandboxSummary> {
+    this.#database.saveSandbox({ ...sandbox, status: "destroying" });
+    try {
+      await this.#driver.remove(sandbox.runtimeName);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.#database.saveSandbox({ ...sandbox, error: `destroy failed: ${message}` });
+      throw error;
+    }
+    for (const listener of this.#destroyListeners) await listener(sandbox.id);
+    const destroyedAt = this.#now();
+    const destroyed: Sandbox = { ...sandbox, status: "destroyed", destroyedAt, endpoint: undefined, authToken: undefined };
+    this.#database.saveSandbox(destroyed);
+    this.#retainManagedWorkspace(sandbox.workspaceId, destroyedAt);
+    return this.#summarize(destroyed);
+  }
+
   #summarize(sandbox: Sandbox): SandboxSummary {
     const workspace = this.#database.getWorkspace(sandbox.workspaceId);
     if (!workspace) throw new Error(`Sandbox ${sandbox.id} references a missing workspace`);
@@ -226,7 +240,6 @@ export class SandboxService {
       createdAt: sandbox.createdAt,
       lastActivityAt: sandbox.lastActivityAt,
       expiresAt: sandbox.expiresAt,
-      maxExpiresAt: sandbox.maxExpiresAt,
       destroyedAt: sandbox.destroyedAt,
     };
   }
