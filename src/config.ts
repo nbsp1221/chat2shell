@@ -12,8 +12,6 @@ export interface AppConfig {
   readonly allowedHostRoots: readonly string[];
   readonly sbxBinary: string;
   readonly sandboxTemplate: string;
-  readonly sandboxCpus: number;
-  readonly sandboxMemory: string;
   readonly sandboxPort: number;
   readonly idleTimeoutMs: number;
   readonly workspaceRetentionMs: number;
@@ -56,8 +54,6 @@ export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): App
     allowedHostRoots,
     sbxBinary: "sbx",
     sandboxTemplate: "chat2shell-codexpro:0.30.0",
-    sandboxCpus: 2,
-    sandboxMemory: "4g",
     sandboxPort: 18_787,
     idleTimeoutMs: 24 * 60 * 60_000,
     workspaceRetentionMs: 30 * 24 * 60 * 60_000,

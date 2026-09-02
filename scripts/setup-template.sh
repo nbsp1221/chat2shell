@@ -24,7 +24,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-sbx create --quiet --name "$bootstrap_name" --cpus 1 --memory 2g shell "$bootstrap_dir"
+sbx create --quiet --name "$bootstrap_name" shell "$bootstrap_dir"
 sbx exec -u root "$bootstrap_name" npm install --global --omit=dev "codexpro@0.30.0"
 sbx stop "$bootstrap_name"
 sbx template save "$bootstrap_name" "$template"

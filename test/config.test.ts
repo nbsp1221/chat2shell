@@ -8,4 +8,6 @@ test("uses the complete public lifecycle policy", () => {
   assert.equal(config.idleTimeoutMs, 24 * 60 * 60_000);
   assert.equal(config.workspaceRetentionMs, 30 * 24 * 60 * 60_000);
   assert.equal("maxLifetimeMs" in config, false);
+  assert.equal("sandboxCpus" in config, false);
+  assert.equal("sandboxMemory" in config, false);
 });

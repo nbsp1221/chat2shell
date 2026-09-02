@@ -34,7 +34,7 @@ function config(base: string): AppConfig {
     host: "127.0.0.1", port: 0, maxBodyBytes: 1024, dataRoot: path.join(base, "data"),
     workspaceRoot: path.join(base, "data", "workspaces"), stateDir: path.join(base, "state"), databasePath: ":memory:",
     allowedHostRoots: [path.join(base, "allowed")], sbxBinary: "sbx", sandboxTemplate: "test:latest",
-    sandboxCpus: 1, sandboxMemory: "1g", sandboxPort: 18_787, idleTimeoutMs: 1_000,
+    sandboxPort: 18_787, idleTimeoutMs: 1_000,
     workspaceRetentionMs: 7_000, reaperIntervalMs: 100,
   };
 }

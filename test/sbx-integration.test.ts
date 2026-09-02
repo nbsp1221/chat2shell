@@ -53,13 +53,13 @@ test("the public MCP boundary routes full shell and private Docker only into a r
     dataRoot: path.join(base, "data"), workspaceRoot: path.join(base, "data", "workspaces"),
     stateDir: path.join(base, "data", "state"), databasePath: path.join(base, "data", "state", "test.sqlite"),
     allowedHostRoots: [allowedRoot], sbxBinary: "sbx", sandboxTemplate: "chat2shell-codexpro:0.30.0",
-    sandboxCpus: 1, sandboxMemory: "2g", sandboxPort: 18_787, idleTimeoutMs: 24 * 60 * 60_000,
+    sandboxPort: 18_787, idleTimeoutMs: 24 * 60 * 60_000,
     workspaceRetentionMs: 30 * 24 * 60 * 60_000,
     reaperIntervalMs: 60_000,
   };
   const database = new StateDatabase(appConfig.databasePath);
   const workspaces = new WorkspaceService({ database, dataRoot: appConfig.dataRoot, workspaceRoot: appConfig.workspaceRoot, allowedHostRoots: appConfig.allowedHostRoots });
-  const driver = new SbxDriver({ binary: "sbx", template: appConfig.sandboxTemplate, cpus: 1, memory: "2g", sandboxPort: appConfig.sandboxPort });
+  const driver = new SbxDriver({ binary: "sbx", template: appConfig.sandboxTemplate, sandboxPort: appConfig.sandboxPort });
   const sandboxes = new SandboxService({ database, workspaces, driver, config: appConfig });
   const clients = new CodexProClientPool(sandboxes);
   const tools = codexProToolManifest();
