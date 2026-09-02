@@ -104,9 +104,23 @@ test("the public MCP boundary routes full shell and private Docker only into a r
     const afterLongCommand = await callTool(url, 8, "bash", { sandbox_id: sandboxId, command: "printf still-alive" });
     assert.notEqual(afterLongCommand.isError, true, JSON.stringify(afterLongCommand));
 
-    const listed = await callTool(url, 9, "sandbox_list", {});
+    const preview = await callTool(url, 9, "bash", {
+      sandbox_id: sandboxId,
+      command: "nohup node -e 'require(\"http\").createServer((_request, response) => response.end(\"sandbox-preview\")).listen(3000, \"0.0.0.0\")' >/tmp/chat2shell-preview.log 2>&1 </dev/null &",
+    });
+    assert.notEqual(preview.isError, true, JSON.stringify(preview));
+    const exposed = await callTool(url, 10, "sandbox_expose", { sandbox_id: sandboxId, port: 3_000 });
+    assert.notEqual(exposed.isError, true, JSON.stringify(exposed));
+    const exposure = exposed.structuredContent as { sandboxId: string; sandboxPort: number; hostPort: number };
+    assert.equal(exposure.sandboxId, sandboxId);
+    assert.equal(exposure.sandboxPort, 3_000);
+    assert.equal(await (await fetch(`http://127.0.0.1:${exposure.hostPort}`)).text(), "sandbox-preview");
+    const repeated = await callTool(url, 11, "sandbox_expose", { sandbox_id: sandboxId, port: 3_000 });
+    assert.deepEqual(repeated.structuredContent, exposure);
+
+    const listed = await callTool(url, 12, "sandbox_list", {});
     assert.equal((listed.structuredContent as { sandboxes: Array<{ id: string }> }).sandboxes[0]?.id, sandboxId);
-    const destroyed = await callTool(url, 10, "sandbox_destroy", { sandbox_id: sandboxId });
+    const destroyed = await callTool(url, 13, "sandbox_destroy", { sandbox_id: sandboxId });
     assert.equal((destroyed.structuredContent as { status: string }).status, "destroyed");
     sandboxId = undefined;
     assert.equal(workspaces.list("local-owner")[0]?.status, "retained");
@@ -114,14 +128,14 @@ test("the public MCP boundary routes full shell and private Docker only into a r
     const hostRepository = path.join(allowedRoot, "repository");
     execFileSync("git", ["clone", "--quiet", "--no-hardlinks", process.cwd(), hostRepository]);
     const cloneWorkspace = workspaces.registerHost("local-owner", hostRepository, "clone");
-    const cloneCreateResult = await callTool(url, 11, "sandbox_create", { workspace_id: cloneWorkspace.id });
+    const cloneCreateResult = await callTool(url, 14, "sandbox_create", { workspace_id: cloneWorkspace.id });
     const cloneCreated = cloneCreateResult.structuredContent as { status: string; sandbox: { id: string } };
     assert.equal(cloneCreated.status, "created");
     sandboxId = cloneCreated.sandbox.id;
-    const cloneWrite = await callTool(url, 12, "write", { sandbox_id: sandboxId, path: "clone-proof.txt", content: "private clone\n" });
+    const cloneWrite = await callTool(url, 15, "write", { sandbox_id: sandboxId, path: "clone-proof.txt", content: "private clone\n" });
     assert.notEqual(cloneWrite.isError, true);
     assert.equal(fs.existsSync(path.join(hostRepository, "clone-proof.txt")), false, "clone mode must not modify the host checkout");
-    await callTool(url, 13, "sandbox_destroy", { sandbox_id: sandboxId });
+    await callTool(url, 16, "sandbox_destroy", { sandbox_id: sandboxId });
     sandboxId = undefined;
   } finally {
     if (sandboxId) await sandboxes.destroy("local-owner", sandboxId).catch(() => undefined);

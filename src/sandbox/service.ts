@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { AppConfig } from "../config.js";
 import { createId } from "../domain/ids.js";
-import type { Approval, Sandbox, SandboxCreateResult, SandboxSummary, Workspace, WorkspaceMode } from "../domain/types.js";
+import type { Approval, Sandbox, SandboxCreateResult, SandboxPortExposure, SandboxSummary, Workspace, WorkspaceMode } from "../domain/types.js";
 import type { StateDatabase } from "../state/database.js";
 import type { WorkspaceService } from "../workspaces/service.js";
 import type { SandboxDriver } from "./sbx-driver.js";
@@ -112,6 +112,14 @@ export class SandboxService {
 
   async readyForTool(ownerId: string, sandboxId: string): Promise<Sandbox> {
     return this.withReady(ownerId, sandboxId, async (sandbox) => sandbox);
+  }
+
+  async expose(ownerId: string, sandboxId: string, port: number): Promise<SandboxPortExposure> {
+    if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error("port must be an integer from 1 to 65535");
+    return this.withReady(ownerId, sandboxId, async (sandbox) => {
+      const published = await this.#driver.expose(sandbox.runtimeName, port);
+      return { sandboxId, ...published };
+    });
   }
 
   async withReady<T>(ownerId: string, sandboxId: string, operation: (sandbox: Sandbox) => Promise<T>): Promise<T> {

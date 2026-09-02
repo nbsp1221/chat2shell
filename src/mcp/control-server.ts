@@ -55,6 +55,22 @@ const sandboxDestroyTool: Tool = {
   annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false, idempotentHint: true },
 };
 
+const sandboxExposeTool: Tool = {
+  name: "sandbox_expose",
+  title: "Expose Sandbox Port",
+  description: "Publish one TCP port from a running sandbox on an automatically assigned port on every host IPv4 interface. The service inside the sandbox must listen on 0.0.0.0. The mapping has no separate authentication or expiration and disappears with the sandbox. Traffic through it does not renew sandbox activity.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      sandbox_id: { type: "string" },
+      port: { type: "integer", minimum: 1, maximum: 65_535 },
+    },
+    required: ["sandbox_id", "port"],
+    additionalProperties: false,
+  },
+  annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true, idempotentHint: true },
+};
+
 const workspaceListTool: Tool = {
   name: "workspace_list",
   title: "List Workspaces",
@@ -63,7 +79,7 @@ const workspaceListTool: Tool = {
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 };
 
-const managementTools = [sandboxCreateTool, sandboxListTool, sandboxGetTool, sandboxDestroyTool, workspaceListTool] as const;
+const managementTools = [sandboxCreateTool, sandboxListTool, sandboxGetTool, sandboxExposeTool, sandboxDestroyTool, workspaceListTool] as const;
 
 function objectArgs(value: unknown): Record<string, unknown> {
   if (value === undefined) return {};
@@ -75,6 +91,12 @@ function optionalString(args: Record<string, unknown>, name: string): string | u
   const value = args[name];
   if (value === undefined) return undefined;
   if (typeof value !== "string" || value.length === 0) throw new Error(`${name} must be a non-empty string`);
+  return value;
+}
+
+function requiredNumber(args: Record<string, unknown>, name: string): number {
+  const value = args[name];
+  if (typeof value !== "number") throw new Error(`${name} must be a number`);
   return value;
 }
 
@@ -92,7 +114,7 @@ function errorResult(error: unknown): CallToolResult {
 
 export interface ControlServerDependencies {
   readonly principalId: string;
-  readonly sandboxes: Pick<SandboxService, "create" | "list" | "get" | "destroy">;
+  readonly sandboxes: Pick<SandboxService, "create" | "list" | "get" | "expose" | "destroy">;
   readonly workspaces: Pick<WorkspaceService, "list">;
   readonly codexPro: Pick<CodexProClientPool, "call">;
   readonly codexProTools: readonly Tool[];
@@ -128,6 +150,12 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
           return jsonResult({ sandboxes: dependencies.sandboxes.list(dependencies.principalId) });
         case "sandbox_get":
           return jsonResult(dependencies.sandboxes.get(dependencies.principalId, optionalString(args, "sandbox_id") ?? ""));
+        case "sandbox_expose":
+          return jsonResult(await dependencies.sandboxes.expose(
+            dependencies.principalId,
+            optionalString(args, "sandbox_id") ?? "",
+            requiredNumber(args, "port"),
+          ));
         case "sandbox_destroy":
           return jsonResult(await dependencies.sandboxes.destroy(dependencies.principalId, optionalString(args, "sandbox_id") ?? ""));
         case "workspace_list":

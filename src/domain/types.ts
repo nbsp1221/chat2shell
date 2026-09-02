@@ -58,3 +58,9 @@ export interface SandboxCreateResult {
   readonly sandbox?: SandboxSummary;
   readonly approval?: Approval;
 }
+
+export interface SandboxPortExposure {
+  readonly sandboxId: string;
+  readonly sandboxPort: number;
+  readonly hostPort: number;
+}

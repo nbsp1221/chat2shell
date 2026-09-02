@@ -27,6 +27,12 @@ The Secure MCP Tunnel transports MCP messages to one loopback endpoint and does 
 The chat2shell process owns identity, path approval, lifecycle, expiration, and routing.
 The `SbxDriver` is the only component allowed to invoke `sbx`, and it accepts structured values rather than raw arguments.
 
+## Port exposure
+
+`sandbox_expose` asks `SbxDriver` to publish one TCP/IPv4 sandbox port on `0.0.0.0` using an automatically assigned host port. The service inside the sandbox must listen on `0.0.0.0`; chat2shell does not start it or check its protocol or health.
+
+The mapping is owned by Docker Sandboxes and disappears with the sandbox. chat2shell stores no exposure state, creates no URL, adds no authentication or expiration, and has no knowledge of Tailscale or any other route by which the user reaches the host. A repeated request for the same sandbox port returns the existing mapping. Traffic through the mapping does not renew the sandbox inactivity deadline because it is not an MCP tool call.
+
 ## Independent identities
 
 `sandbox_id` identifies a disposable microVM and is required on every CodexPro tool call.

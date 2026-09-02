@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import type { AppConfig } from "../src/config.js";
-import type { RuntimeInfo, SandboxDriver } from "../src/sandbox/sbx-driver.js";
+import type { PublishedPort, RuntimeInfo, SandboxDriver } from "../src/sandbox/sbx-driver.js";
 import { SandboxService } from "../src/sandbox/service.js";
 import { StateDatabase } from "../src/state/database.js";
 import { WorkspaceService } from "../src/workspaces/service.js";
@@ -24,6 +24,7 @@ class FakeDriver implements SandboxDriver {
   async startCodexPro(): Promise<void> { this.startCalls += 1; }
   async waitUntilHealthy(): Promise<void> {}
   async isHealthy(): Promise<boolean> { return this.healthy; }
+  async expose(_name: string, sandboxPort: number): Promise<PublishedPort> { return { sandboxPort, hostPort: 32_000 }; }
   async remove(name: string): Promise<void> { this.removeCalls += 1; this.runtimes.delete(name); }
   async list(): Promise<readonly RuntimeInfo[]> { return [...this.runtimes.values()]; }
 }
@@ -77,6 +78,25 @@ test("host workspace requests stop at approval_required", async (context) => {
   assert.equal(result.status, "approval_required");
   assert.match(result.approval?.id ?? "", /^approval_/);
   assert.equal(driver.createCalls, 0);
+});
+
+test("exposes a running sandbox port on an automatically assigned host port", async (context) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "chat2shell-expose-"));
+  fs.mkdirSync(path.join(base, "allowed"));
+  const database = new StateDatabase(":memory:");
+  const appConfig = config(base);
+  const workspaces = new WorkspaceService({ database, dataRoot: appConfig.dataRoot, workspaceRoot: appConfig.workspaceRoot, allowedHostRoots: appConfig.allowedHostRoots });
+  const service = new SandboxService({ database, workspaces, driver: new FakeDriver(), config: appConfig });
+  context.after(() => { database.close(); fs.rmSync(base, { recursive: true, force: true }); });
+
+  const created = await service.create("owner", {});
+  assert(created.sandbox);
+  assert.deepEqual(await service.expose("owner", created.sandbox.id, 3_000), {
+    sandboxId: created.sandbox.id,
+    sandboxPort: 3_000,
+    hostPort: 32_000,
+  });
+  await assert.rejects(() => service.expose("owner", created.sandbox!.id, 0), /integer from 1 to 65535/);
 });
 
 test("an unavailable runtime becomes an explicit failed sandbox without automatic restart", async (context) => {

@@ -15,7 +15,7 @@ ChatGPT conversations
             -> one private Docker Engine
 ```
 
-The host process exposes five lifecycle tools and a static contract for eighteen relevant CodexPro tools.
+The host process exposes six management tools and a static contract for eighteen relevant CodexPro tools.
 Every CodexPro tool has an additional required `sandbox_id`; chat2shell strips that routing field and forwards the remaining arguments to CodexPro inside the selected microVM.
 Calls to the same sandbox are serialized, while different conversations can reuse the same stable ID returned by `sandbox_list`.
 
@@ -48,6 +48,9 @@ This section is the complete product policy. A behavior that contradicts it is a
 ### Network and credentials
 
 - Outbound network access follows the Docker Sandboxes policy installed on this machine. The current prototype intentionally permits general network access.
+- `sandbox_expose` publishes one sandbox TCP port on an automatically assigned port on every host IPv4 interface. It is never called automatically, adds no authentication or expiration, and relies on the sandboxed service listening on `0.0.0.0`.
+- Repeating `sandbox_expose` for the same sandbox port returns the existing mapping. The mapping disappears when the sandbox is removed.
+- Traffic through an exposed port does not count as a tool call and does not renew the sandbox inactivity deadline.
 - chat2shell denies `openrouter.ai` for its sandboxes so Docker's unrelated global `opencodex` credential cannot be used by ChatGPT.
 - Docker's built-in MCP gateway may exist inside a shell sandbox, but chat2shell and CodexPro do not connect to it.
 - CodexPro endpoints use random bearer tokens and dynamically allocated loopback ports.
@@ -152,13 +155,22 @@ Pass the returned sandbox ID to every CodexPro tool:
 {"sandbox_id":"sbx_...","command":"pnpm test"}
 ```
 
+To view a web application, start it on every sandbox interface and expose its port:
+
+```text
+bash -> pnpm dev --host 0.0.0.0
+sandbox_expose -> { "sandbox_id": "sbx_...", "port": 3000 }
+```
+
+Connect to the returned `hostPort` through any network path that already reaches the host. chat2shell does not discover host addresses, create URLs, or manage a reverse proxy.
+
 Other conversations connected to the same private app can find and reuse it:
 
 ```text
 sandbox_list -> sandbox_get -> read/search/bash/... with sandbox_id
 ```
 
-Available management tools are `sandbox_create`, `sandbox_list`, `sandbox_get`, `sandbox_destroy`, and `workspace_list`.
+Available management tools are `sandbox_create`, `sandbox_list`, `sandbox_get`, `sandbox_expose`, `sandbox_destroy`, and `workspace_list`.
 
 ## Configuration
 
