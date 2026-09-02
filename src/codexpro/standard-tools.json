@@ -1,0 +1,755 @@
+[
+  {
+    "name": "server_config",
+    "title": "Server Config",
+    "description": "Show CodexPro server configuration, safety modes, limits, and blocked paths. Does not reveal auth tokens.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "load_skill",
+    "title": "Load Skill",
+    "description": "Load the bounded SKILL.md body for a skill discovered inside the selected sandbox workspace.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Exact skill name from skill_inventory or codexpro_inventory."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "workspace",
+            "user",
+            "plugin",
+            "other"
+          ],
+          "description": "Optional source override. Without it, the highest-precedence skill is loaded."
+        },
+        "path": {
+          "type": "string",
+          "description": "Optional exact sanitized path override for diagnostics or an explicitly selected suppressed duplicate."
+        },
+        "include_global_skills": {
+          "type": "boolean",
+          "description": "Also scan installed user/plugin skills. Default: auto when source/path is not workspace."
+        },
+        "max_skills": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "description": "Maximum skills to scan while resolving the requested skill. Default: 500."
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 100000,
+          "description": "Maximum bytes to return from SKILL.md. Default: 40000."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "open_current_workspace",
+    "title": "Open Current Workspace",
+    "description": "Open the workspace assigned to the selected sandbox.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "include_tree": {
+          "type": "boolean",
+          "description": "Include a compact file tree. Default: false for speed."
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8,
+          "description": "Tree depth when include_tree=true. Default: 2."
+        },
+        "include_skills": {
+          "type": "boolean",
+          "description": "Discover skills by name/description. Default: false for speed."
+        },
+        "include_global_skills": {
+          "type": "boolean",
+          "description": "Also scan installed user/plugin skills when include_skills=true. Default: false."
+        }
+      },
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "inspect_workspace",
+    "title": "Inspect Workspace",
+    "description": "Build a bounded repository map with languages, project types, entrypoints, areas, symbols, relationships, and coverage warnings.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Optional workspace-relative area to emphasize. Default: entire workspace."
+        },
+        "max_files": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000,
+          "description": "Maximum returned file records. Default: 300."
+        },
+        "include_symbols": {
+          "type": "boolean",
+          "description": "Include symbols in structured output. Default: true."
+        },
+        "include_relationships": {
+          "type": "boolean",
+          "description": "Include relationships in structured output. Default: true."
+        },
+        "max_symbols": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000,
+          "description": "Maximum returned symbols. Analysis remains bounded by server config."
+        },
+        "max_relationships": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 250000,
+          "description": "Maximum returned relationships. Analysis remains bounded by server config."
+        }
+      },
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "tree",
+    "title": "File Tree",
+    "description": "List files and directories inside the workspace, excluding blocked paths.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Directory relative to workspace root. Default: ."
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12,
+          "description": "Maximum depth. Default: 4."
+        },
+        "include_hidden": {
+          "type": "boolean",
+          "description": "Include dotfiles/dotfolders that are not blocked. Default: false."
+        },
+        "max_entries": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3000,
+          "description": "Maximum entries. Default: 800."
+        }
+      },
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "search",
+    "title": "Search Files",
+    "description": "Use this for targeted verification or code lookup. Prefer one specific final search instead of repeated broad verification searches.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Text or regex to search for."
+        },
+        "regex": {
+          "type": "boolean",
+          "description": "Treat query as a regular expression. Requires ripgrep. Default: false."
+        },
+        "path": {
+          "type": "string",
+          "description": "Directory or file relative to workspace root. Default: ."
+        },
+        "glob": {
+          "type": "string",
+          "description": "Optional glob, for example src/**/*.ts."
+        },
+        "include_hidden": {
+          "type": "boolean",
+          "description": "Include hidden files that are not blocked. Default: false."
+        },
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2000,
+          "description": "Maximum results. Default from config."
+        },
+        "intent": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "text",
+            "symbol",
+            "references",
+            "impact"
+          ],
+          "description": "Optional structured search intent. Omit for legacy lexical behavior."
+        },
+        "symbol": {
+          "type": "string",
+          "description": "Optional symbol query. Uses repository analysis and overrides query text."
+        },
+        "include_tests": {
+          "type": "boolean",
+          "description": "Include related tests in structured results. Default: false."
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "read",
+    "title": "Read File",
+    "description": "Read a specific text file with line numbers. Avoid rereading files after write/edit/apply_patch unless exact final content is needed.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "File path relative to workspace root."
+        },
+        "start_line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "First line to read. Default: 1."
+        },
+        "end_line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Last line to read. Default: end of file."
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 2000000,
+          "description": "Maximum file bytes. Capped by server config."
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "view_image",
+    "title": "View Image",
+    "description": "Inspect a PNG, JPEG, GIF, or WebP image from the active workspace. Returns native MCP image content plus dimensions and SHA-256.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Image path relative to workspace root."
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 4096,
+          "maximum": 2000000,
+          "description": "Maximum image bytes. Default: at least 1 MB, capped at 2 MB."
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "write",
+    "title": "Write File",
+    "description": "Create or overwrite a meaningful text file inside the workspace. New files use an atomic rename; existing files retain their inode and metadata. Returns a unified diff; pass the SHA from read when overwriting shared files.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "File path relative to workspace root."
+        },
+        "content": {
+          "type": "string",
+          "description": "Complete file contents to write."
+        },
+        "create_dirs": {
+          "type": "boolean",
+          "description": "Create parent directories if missing. Default: true."
+        },
+        "overwrite": {
+          "type": "boolean",
+          "description": "Allow overwriting existing files. Default: true."
+        },
+        "expected_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "Optional SHA-256 from read. Fails instead of overwriting if another session changed the file."
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "edit",
+    "title": "Edit File",
+    "description": "Apply a targeted exact text replacement while retaining the existing file inode and metadata. Returns a unified diff; pass the SHA from read to reject stale multi-session edits.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "File path relative to workspace root."
+        },
+        "old_text": {
+          "type": "string",
+          "description": "Exact text to replace. Must match once unless replace_all=true."
+        },
+        "new_text": {
+          "type": "string",
+          "description": "Replacement text."
+        },
+        "replace_all": {
+          "type": "boolean",
+          "description": "Replace all occurrences. Default: false."
+        },
+        "expected_replacements": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Fail if actual replacement count differs."
+        },
+        "expected_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "Optional SHA-256 from read. Fails if another session changed the file."
+        }
+      },
+      "required": [
+        "path",
+        "old_text",
+        "new_text"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "apply_patch",
+    "title": "Apply Patch",
+    "description": "Apply one unified diff patch inside the workspace. Paths are validated before applying. Prefer edit for tiny replacements and apply_patch for multi-file diffs.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "patch": {
+          "type": "string",
+          "description": "Unified diff patch to apply. File paths must stay inside the workspace and avoid blocked paths."
+        }
+      },
+      "required": [
+        "patch"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "import_file",
+    "title": "Import Attachment File",
+    "description": "Import a ChatGPT Apps SDK attachment into the workspace. Accepts only a platform file object with download_url and file_id. Not a general URL downloader. Overwrite is off by default.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "object",
+          "properties": {
+            "download_url": {
+              "type": "string",
+              "description": "Temporary HTTPS download URL provided by ChatGPT."
+            },
+            "file_id": {
+              "type": "string",
+              "description": "ChatGPT file id for this attachment."
+            },
+            "mime_type": {
+              "type": "string",
+              "description": "Optional MIME type declared by ChatGPT."
+            },
+            "file_name": {
+              "type": "string",
+              "description": "Optional original file name declared by ChatGPT."
+            }
+          },
+          "required": [
+            "download_url",
+            "file_id"
+          ],
+          "additionalProperties": false,
+          "description": "ChatGPT Apps SDK file reference from openai/fileParams."
+        },
+        "destination": {
+          "type": "string",
+          "description": "Destination path relative to the workspace root."
+        },
+        "overwrite": {
+          "type": "boolean",
+          "description": "Replace an existing destination file. Default: false."
+        },
+        "expected_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "Optional SHA-256 of the attachment bytes. Import fails on mismatch."
+        }
+      },
+      "required": [
+        "file",
+        "destination"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "bash",
+    "title": "Bash",
+    "description": "Run an unrestricted Bash command inside the selected sandbox workspace. The command can modify sandbox files, use sudo, access the sandbox network, and control the sandbox private Docker Engine. It cannot access the host shell or host Docker daemon.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Command to run."
+        },
+        "session_id": {
+          "type": "string",
+          "description": "Optional bash session id. If configured on the server, a provided value must match it."
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Working directory relative to workspace root. Default: ."
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 600000,
+          "description": "Timeout in milliseconds. Default: 30000. Max: 600000."
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "show_changes",
+    "title": "Show Changes",
+    "description": "Summarize the current workspace changes in one review-oriented result with git status, diff stats, and optional diff. Use this instead of bash git status, bash git diff, git_status, or git_diff when reviewing work.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Optional file path relative to workspace root."
+        },
+        "staged": {
+          "type": "boolean",
+          "description": "Show staged diff. Default: false."
+        },
+        "include_diff": {
+          "type": "boolean",
+          "description": "Include the unified diff. Default: true."
+        },
+        "since": {
+          "type": "string",
+          "enum": [
+            "last_shown",
+            "workspace"
+          ],
+          "description": "Use last_shown to suppress unchanged repeated reviews. Default: last_shown."
+        },
+        "mark_reviewed": {
+          "type": "boolean",
+          "description": "Update the last-shown review checkpoint after this call. Default: true."
+        }
+      },
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "read_handoff",
+    "title": "Read Handoff",
+    "description": "Read the shared .ai-bridge planning files used for ChatGPT-to-agent coordination.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "wait_for_handoff",
+    "title": "Wait For Handoff",
+    "description": "Read-only long-poll of the local handoff run state so ChatGPT can stay the planner/reviewer while a local executor runs. Reads .ai-bridge/handoff-run-state.json and returns the run status plus status/diff/log/test excerpts. It never starts processes or runs shell commands; it only observes local handoff state written by execute-handoff/watch-handoff/loop-handoff.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "plan_hash": {
+          "type": "string",
+          "description": "Expected current-plan.md hash. If set, only a terminal run with this plan_hash counts as completed."
+        },
+        "since_iteration": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Only treat a run with iteration greater than this as the awaited completion."
+        },
+        "max_wait_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60,
+          "description": "Maximum seconds to long-poll before returning the current state. Default: 20."
+        },
+        "poll_ms": {
+          "type": "integer",
+          "minimum": 250,
+          "maximum": 5000,
+          "description": "Poll interval in milliseconds. Default: 1000."
+        },
+        "include_diff": {
+          "type": "boolean",
+          "description": "Include the implementation diff excerpt when completed. Default: true."
+        },
+        "include_log_excerpt": {
+          "type": "boolean",
+          "description": "Include the tail of execution-log.jsonl when completed. Default: true."
+        },
+        "include_tests": {
+          "type": "boolean",
+          "description": "Include the loop-tests.txt excerpt when completed. Default: true."
+        }
+      },
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "export_pro_context",
+    "title": "Export Pro Context",
+    "description": "Create .ai-bridge/pro-context.md with repo tree, git state, selected files, and handoff context for high-context ChatGPT planning without live MCP tool calls.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Markdown title for the context bundle."
+        },
+        "selected_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Specific workspace-relative files to include."
+        },
+        "extra_globs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional workspace-relative glob patterns to include, for example src/**/*.ts."
+        },
+        "include_important_files": {
+          "type": "boolean",
+          "description": "Auto-include important root config/docs such as AGENTS.md, README.md, and package.json. Default: true."
+        },
+        "include_changed_files": {
+          "type": "boolean",
+          "description": "Auto-include currently changed files from git status. Default: true."
+        },
+        "include_diff": {
+          "type": "boolean",
+          "description": "Include the current git diff. Default: true."
+        },
+        "include_ai_bridge": {
+          "type": "boolean",
+          "description": "Include existing .ai-bridge planning files. Default: true."
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6,
+          "description": "Repository tree depth. Default: 3."
+        },
+        "max_files": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 80,
+          "description": "Maximum file contents to include. Default: 24."
+        },
+        "max_file_bytes": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 250000,
+          "description": "Maximum bytes per included file. Default: 60000."
+        },
+        "max_total_bytes": {
+          "type": "integer",
+          "minimum": 20000,
+          "maximum": 2000000,
+          "description": "Maximum bytes in the generated bundle."
+        }
+      },
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "handoff_to_agent",
+    "title": "Handoff To Agent",
+    "description": "Write .ai-bridge/current-plan.md for Codex, OpenCode, Pi, or another local implementation agent. This only creates handoff files; it does not execute local agent commands.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "agent": {
+          "type": "string",
+          "description": "Target agent id, for example codex, opencode, pi, or custom. Default: custom."
+        },
+        "agent_name": {
+          "type": "string",
+          "description": "Human-readable agent name for custom agents."
+        },
+        "model": {
+          "type": "string",
+          "description": "Optional model identifier to include in the handoff plan."
+        },
+        "title": {
+          "type": "string",
+          "description": "Short task title."
+        },
+        "plan": {
+          "type": "string",
+          "description": "Detailed implementation plan for the local agent."
+        },
+        "append": {
+          "type": "boolean",
+          "description": "Append to existing current-plan.md instead of overwriting. Default: false."
+        }
+      },
+      "required": [
+        "plan"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  }
+]
