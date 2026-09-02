@@ -45,7 +45,7 @@ const sandboxGetTool: Tool = {
 const sandboxDestroyTool: Tool = {
   name: "sandbox_destroy",
   title: "Destroy Sandbox",
-  description: "Permanently remove one sandbox microVM. Managed workspace files are retained for seven days; registered host workspaces are never deleted.",
+  description: "Permanently remove one sandbox microVM. Managed workspace files are retained for 30 days; registered host workspaces are never deleted.",
   inputSchema: {
     type: "object",
     properties: { sandbox_id: { type: "string" } },

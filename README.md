@@ -66,7 +66,14 @@ workspace:    ~/.chat2shell/workspaces/ws_...
 
 CodexPro runs as one foreground `sbx exec` session owned by chat2shell. That session keeps the microVM running; there is no second supervisor and no automatic restart.
 
-The sandbox expires after 30 minutes of inactivity and has a four-hour hard lifetime. Expiration is checked between calls and never interrupts a command already running. Successful tool calls renew only the idle deadline; failed calls do not.
+The complete automatic lifetime policy is intentionally small:
+
+- A sandbox is removed after 24 hours without a tool call.
+- A sandbox that keeps receiving tool calls has no maximum lifetime.
+- A managed workspace is retained for 30 days after its sandbox is removed.
+- After 30 days, the managed workspace is moved to `~/.chat2shell/trash`.
+
+Every tool call that reaches a running sandbox counts as activity, whether it succeeds or fails. Expiration is checked between calls and never interrupts a command already running. The trash directory is not emptied automatically. Host workspaces are outside chat2shell's ownership and are never moved or deleted.
 
 Cleanup checks run once per minute. Each sandbox receives 2 CPUs and 4 GiB of memory. Bash commands default to a 30-second timeout and may request up to 10 minutes. The outer MCP server accepts request bodies up to 20 MiB.
 
@@ -74,8 +81,7 @@ If CodexPro becomes unavailable, the sandbox changes to `failed`. `sandbox_list`
 
 Restarting chat2shell invalidates existing sandboxes because their foreground sessions belonged to the old controller. On the next start, chat2shell removes those microVMs and reports their records as `failed`. Reboot persistence is not implemented.
 
-Destroying an active sandbox removes its microVM but retains a managed workspace for seven days so a new sandbox can attach using the same `workspace_id`.
-After seven days, the reaper moves it to `~/.chat2shell/trash`. chat2shell does not empty that trash. Registered host workspaces are never deleted.
+Destroying an active sandbox follows the same workspace policy, so a managed workspace can be attached to a new sandbox with the same `workspace_id` during its 30-day retention period.
 
 ## Setup
 

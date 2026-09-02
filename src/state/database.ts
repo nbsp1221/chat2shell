@@ -53,7 +53,6 @@ function sandboxFromRow(row: Record<string, unknown>): Sandbox {
     createdAt: Number(row.created_at),
     lastActivityAt: Number(row.last_activity_at),
     expiresAt: Number(row.expires_at),
-    maxExpiresAt: Number(row.max_expires_at),
     destroyedAt: optionalNumber(row.destroyed_at),
   };
 }
@@ -111,7 +110,6 @@ export class StateDatabase {
         created_at INTEGER NOT NULL,
         last_activity_at INTEGER NOT NULL,
         expires_at INTEGER NOT NULL,
-        max_expires_at INTEGER NOT NULL,
         destroyed_at INTEGER
       );
       CREATE UNIQUE INDEX IF NOT EXISTS one_active_sandbox_per_workspace
@@ -191,22 +189,22 @@ export class StateDatabase {
 
   insertSandbox(sandbox: Sandbox): void {
     this.#database.prepare(`INSERT INTO sandboxes
-      (id, owner_id, workspace_id, runtime_name, runtime_root, status, endpoint, auth_token, error, created_at, last_activity_at, expires_at, max_expires_at, destroyed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      (id, owner_id, workspace_id, runtime_name, runtime_root, status, endpoint, auth_token, error, created_at, last_activity_at, expires_at, destroyed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(...this.#sandboxValues(sandbox));
   }
 
   saveSandbox(sandbox: Sandbox): void {
     this.#database.prepare(`UPDATE sandboxes SET
       owner_id = ?, workspace_id = ?, runtime_name = ?, runtime_root = ?, status = ?, endpoint = ?, auth_token = ?, error = ?,
-      created_at = ?, last_activity_at = ?, expires_at = ?, max_expires_at = ?, destroyed_at = ? WHERE id = ?`)
+      created_at = ?, last_activity_at = ?, expires_at = ?, destroyed_at = ? WHERE id = ?`)
       .run(...this.#sandboxValues(sandbox).slice(1), sandbox.id);
   }
 
   #sandboxValues(sandbox: Sandbox): SqlValue[] {
     return [sandbox.id, sandbox.ownerId, sandbox.workspaceId, sandbox.runtimeName, sandbox.runtimeRoot ?? null, sandbox.status,
       sandbox.endpoint ?? null, sandbox.authToken ?? null, sandbox.error ?? null, sandbox.createdAt, sandbox.lastActivityAt,
-      sandbox.expiresAt, sandbox.maxExpiresAt, sandbox.destroyedAt ?? null];
+      sandbox.expiresAt, sandbox.destroyedAt ?? null];
   }
 
   getSandbox(id: string, ownerId?: string): Sandbox | undefined {
@@ -234,7 +232,7 @@ export class StateDatabase {
   }
 
   listExpiredSandboxes(now: number): readonly Sandbox[] {
-    return this.#database.prepare("SELECT * FROM sandboxes WHERE status = 'running' AND (expires_at <= ? OR max_expires_at <= ?)")
-      .all(now, now).map(sandboxFromRow);
+    return this.#database.prepare("SELECT * FROM sandboxes WHERE status = 'running' AND expires_at <= ?")
+      .all(now).map(sandboxFromRow);
   }
 }

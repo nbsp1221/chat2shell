@@ -53,8 +53,8 @@ test("the public MCP boundary routes full shell and private Docker only into a r
     dataRoot: path.join(base, "data"), workspaceRoot: path.join(base, "data", "workspaces"),
     stateDir: path.join(base, "data", "state"), databasePath: path.join(base, "data", "state", "test.sqlite"),
     allowedHostRoots: [allowedRoot], sbxBinary: "sbx", sandboxTemplate: "chat2shell-codexpro:0.30.0",
-    sandboxCpus: 1, sandboxMemory: "2g", sandboxPort: 18_787, idleTimeoutMs: 30 * 60_000,
-    maxLifetimeMs: 4 * 60 * 60_000, workspaceRetentionMs: 7 * 24 * 60 * 60_000,
+    sandboxCpus: 1, sandboxMemory: "2g", sandboxPort: 18_787, idleTimeoutMs: 24 * 60 * 60_000,
+    workspaceRetentionMs: 30 * 24 * 60 * 60_000,
     reaperIntervalMs: 60_000,
   };
   const database = new StateDatabase(appConfig.databasePath);

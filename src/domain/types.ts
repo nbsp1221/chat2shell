@@ -39,7 +39,6 @@ export interface Sandbox {
   readonly createdAt: number;
   readonly lastActivityAt: number;
   readonly expiresAt: number;
-  readonly maxExpiresAt: number;
   readonly destroyedAt?: number;
 }
 
@@ -51,7 +50,6 @@ export interface SandboxSummary {
   readonly createdAt: number;
   readonly lastActivityAt: number;
   readonly expiresAt: number;
-  readonly maxExpiresAt: number;
   readonly destroyedAt?: number;
 }
 
