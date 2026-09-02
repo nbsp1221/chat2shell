@@ -124,8 +124,8 @@ pnpm cli approval reject approval_...
 A host operator can also register a path directly:
 
 ```bash
-pnpm cli workspace add /home/retn0/repositories/nbsp1221/example --mode clone
-pnpm cli workspace add /home/retn0/repositories/nbsp1221/example --mode direct
+pnpm cli workspace add /path/to/repository --mode clone
+pnpm cli workspace add /path/to/repository --mode direct
 pnpm cli workspace list
 ```
 
@@ -168,3 +168,7 @@ Current locations are:
 The fixed template, resource limits, timeouts, and retention values are listed in Current policy above.
 
 OAuth, reboot persistence, the monitoring dashboard, and a browser approval UI do not exist. They will be considered only after the current prototype proves useful.
+
+## License
+
+chat2shell is available under the MIT License. See `THIRD_PARTY_NOTICES.md` for bundled third-party notices.

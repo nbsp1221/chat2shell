@@ -2,7 +2,8 @@
 set -euo pipefail
 
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-state_dir="${CHAT2SHELL_STATE_DIR:-/home/retn0/.chat2shell/state}"
+user_home="${HOME:?HOME must be set}"
+state_dir="${CHAT2SHELL_STATE_DIR:-$user_home/.chat2shell/state}"
 pid_file="$state_dir/runtime.pid"
 
 if [[ ! -f "$pid_file" ]]; then

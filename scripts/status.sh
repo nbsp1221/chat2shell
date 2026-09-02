@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-state_dir="${CHAT2SHELL_STATE_DIR:-/home/retn0/.chat2shell/state}"
+user_home="${HOME:?HOME must be set}"
+state_dir="${CHAT2SHELL_STATE_DIR:-$user_home/.chat2shell/state}"
 pid_file="$state_dir/runtime.pid"
 
 if [[ ! -f "$pid_file" ]]; then

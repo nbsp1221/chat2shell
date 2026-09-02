@@ -2,9 +2,10 @@
 set -euo pipefail
 
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-state_dir="${CHAT2SHELL_STATE_DIR:-/home/retn0/.chat2shell/state}"
-secret_dir="${CHAT2SHELL_SECRET_DIR:-/home/retn0/.secrets/tunnel-client}"
-tunnel_client="${CHAT2SHELL_TUNNEL_CLIENT:-/home/retn0/.local/bin/tunnel-client}"
+user_home="${HOME:?HOME must be set}"
+state_dir="${CHAT2SHELL_STATE_DIR:-$user_home/.chat2shell/state}"
+secret_dir="${CHAT2SHELL_SECRET_DIR:-$user_home/.secrets/tunnel-client}"
+tunnel_client="${CHAT2SHELL_TUNNEL_CLIENT:-$user_home/.local/bin/tunnel-client}"
 listen_host="${CHAT2SHELL_HOST:-127.0.0.1}"
 gateway_port="${CHAT2SHELL_PORT:-18788}"
 enable_tunnel="${CHAT2SHELL_ENABLE_TUNNEL:-1}"
