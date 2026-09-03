@@ -211,7 +211,10 @@ export class BashSessionService {
 
     try {
       return await this.#snapshot(session);
-    } catch {
+    } catch (error) {
+      if (this.#sessions.get(id) !== session) {
+        throw error;
+      }
       return this.#unobservedStart(session);
     }
   }
