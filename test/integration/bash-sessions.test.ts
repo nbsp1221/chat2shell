@@ -34,6 +34,30 @@ class LocalBashExecutor {
   }
 }
 
+class FailOneCallExecutor {
+  readonly executor: LocalBashExecutor;
+  readonly failOnCall: number;
+  calls = 0;
+
+  constructor(cwd: string, failOnCall: number) {
+    this.executor = new LocalBashExecutor(cwd);
+    this.failOnCall = failOnCall;
+  }
+
+  call(
+    ownerId: string,
+    sandboxId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<CallToolResult> {
+    this.calls += 1;
+    if (this.calls === this.failOnCall) {
+      return Promise.reject(new Error(`injected executor failure ${this.calls}`));
+    }
+    return this.executor.call(ownerId, sandboxId, toolName, args);
+  }
+}
+
 class SerializedBashExecutor {
   readonly executor: LocalBashExecutor;
   queue = Promise.resolve();
@@ -69,6 +93,14 @@ function cleanupSession(id: string): void {
   fs.rmSync(`/tmp/chat2shell-bash/${id}`, { recursive: true, force: true });
 }
 
+function sessionOutput(result: CallToolResult): string {
+  const value = result.structuredContent?.output;
+  if (typeof value !== 'string') {
+    throw new Error('Missing Bash session output');
+  }
+  return value;
+}
+
 async function waitForSessionOutput(id: string, expected: string): Promise<void> {
   const outputPath = `/tmp/chat2shell-bash/${id}/output.log`;
   for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -101,6 +133,51 @@ test('returns exited output for a short command', async () => {
     output: 'hello',
     has_more_output: false,
   });
+});
+
+test('preserves the session handle when the initial snapshot fails', async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
+  onTestFinished(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const executor = new FailOneCallExecutor(cwd, 2);
+  const sessions = new BashSessionService(executor);
+
+  const started = await sessions.start('owner', 'sandbox', {
+    command: 'printf recovered',
+    yieldTimeMs: 0,
+  });
+  const id = sessionId(started);
+  onTestFinished(() => cleanupSession(id));
+
+  expect(started.isError).not.toBe(true);
+  expect(started.structuredContent).toEqual({
+    session_id: id,
+    status: 'running',
+    exit_code: null,
+    output: '',
+    has_more_output: false,
+  });
+  const startText = started.content.find((item) => item.type === 'text')?.text;
+  expect(startText).toMatch(/initial snapshot was unavailable.*bash_poll/i);
+
+  let observed = await sessions.poll('owner', 'sandbox', id, { yieldTimeMs: 1_000 });
+  let output = sessionOutput(observed);
+  if (observed.structuredContent?.status === 'running') {
+    observed = await sessions.poll('owner', 'sandbox', id, { yieldTimeMs: 1_000 });
+    output += sessionOutput(observed);
+  }
+
+  expect(observed.structuredContent?.status).toBe('exited');
+  expect(output).toBe('recovered');
+});
+
+test('still rejects when the launch itself fails', async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
+  onTestFinished(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const sessions = new BashSessionService(new FailOneCallExecutor(cwd, 1));
+
+  await expect(
+    sessions.start('owner', 'sandbox', { command: 'printf never-started', yieldTimeMs: 0 }),
+  ).rejects.toThrow(/injected executor failure 1/);
 });
 
 test('returns a running session and long-polls for only new output', async () => {

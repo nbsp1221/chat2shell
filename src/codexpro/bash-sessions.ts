@@ -204,10 +204,15 @@ export class BashSessionService {
           timeout_ms: Math.max(5_000, yieldTimeMs + 5_000),
         }),
       );
-      return await this.#snapshot(session);
     } catch (error) {
       this.#sessions.delete(id);
       throw error;
+    }
+
+    try {
+      return await this.#snapshot(session);
+    } catch {
+      return this.#unobservedStart(session);
     }
   }
 
@@ -249,6 +254,25 @@ export class BashSessionService {
         this.#sessions.delete(sessionId);
       }
     }
+  }
+
+  #unobservedStart(session: BashSession): CallToolResult {
+    const structuredContent = {
+      session_id: session.id,
+      status: 'running',
+      exit_code: null,
+      output: '',
+      has_more_output: false,
+    };
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Bash session ${session.id} started, but its initial snapshot was unavailable. Poll it with bash_poll.`,
+        },
+      ],
+      structuredContent,
+    };
   }
 
   async #snapshot(session: BashSession, yieldTimeMs = 0): Promise<CallToolResult> {

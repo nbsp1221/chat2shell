@@ -8,7 +8,8 @@ const bashOutputSchema = {
     status: {
       type: 'string' as const,
       enum: ['running', 'exited'],
-      description: 'Whether the process is still running or has exited.',
+      description:
+        'Last observed process state. If launch succeeds but the initial snapshot is unavailable, bash conservatively returns running so the session can be polled.',
     },
     exit_code: {
       anyOf: [{ type: 'integer' as const }, { type: 'null' as const }],
