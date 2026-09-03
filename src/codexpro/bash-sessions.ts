@@ -215,7 +215,9 @@ export class BashSessionService {
       status.status === "exited" && status.outputSize === session.readOffset,
     );
     output = session.pendingOutput.subarray(0, prefixLength).toString("utf8");
-    session.pendingOutput = session.pendingOutput.subarray(prefixLength);
+    const pendingOutput = Buffer.alloc(session.pendingOutput.length - prefixLength);
+    session.pendingOutput.copy(pendingOutput, 0, prefixLength);
+    session.pendingOutput = pendingOutput;
     const structuredContent = {
       session_id: session.id,
       status: status.status,
