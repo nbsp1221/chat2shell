@@ -1,7 +1,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult, type Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { CodexProClientPool } from "../codexpro/client-pool.js";
-import { scopedCodexProTool } from "../codexpro/tool-manifest.js";
+import type { BashSessionService } from "../codexpro/bash-sessions.js";
 import type { SandboxService } from "../sandbox/service.js";
 import type { WorkspaceService } from "../workspaces/service.js";
 
@@ -117,6 +117,7 @@ export interface ControlServerDependencies {
   readonly sandboxes: Pick<SandboxService, "create" | "list" | "get" | "expose" | "destroy">;
   readonly workspaces: Pick<WorkspaceService, "list">;
   readonly codexPro: Pick<CodexProClientPool, "call">;
+  readonly bashSessions: Pick<BashSessionService, "start" | "continue" | "stop">;
   readonly codexProTools: readonly Tool[];
 }
 
@@ -125,10 +126,10 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
     { name: "chat2shell", version: "0.2.0" },
     {
       capabilities: { tools: {} },
-      instructions: "Create or select an isolated sandbox first. Every CodexPro tool requires an explicit sandbox_id. Bash is unrestricted inside the sandbox but never has host shell or host Docker access.",
+      instructions: "Create or select an isolated sandbox first. Every sandbox tool requires an explicit sandbox_id. Bash is unrestricted inside the sandbox but never has host shell or host Docker access. When bash returns status=running, use bash_continue with its session_id to read new output or bash_stop to terminate it.",
     },
   );
-  const codexTools = dependencies.codexProTools.map(scopedCodexProTool);
+  const codexTools = dependencies.codexProTools;
   const codexToolNames = new Set(codexTools.map((tool) => tool.name));
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [...managementTools, ...codexTools] }));
@@ -160,6 +161,28 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
           return jsonResult(await dependencies.sandboxes.destroy(dependencies.principalId, optionalString(args, "sandbox_id") ?? ""));
         case "workspace_list":
           return jsonResult({ workspaces: dependencies.workspaces.list(dependencies.principalId) });
+        case "bash": {
+          const sandboxId = optionalString(args, "sandbox_id");
+          if (!sandboxId) throw new Error("sandbox_id is required");
+          return dependencies.bashSessions.start(dependencies.principalId, sandboxId, {
+            command: optionalString(args, "command") ?? "",
+            cwd: optionalString(args, "cwd"),
+            yieldTimeMs: args.yield_time_ms as number | undefined,
+            timeoutMs: args.timeout_ms as number | undefined,
+          });
+        }
+        case "bash_continue":
+          return dependencies.bashSessions.continue(
+            dependencies.principalId,
+            optionalString(args, "sandbox_id") ?? "",
+            optionalString(args, "session_id") ?? "",
+          );
+        case "bash_stop":
+          return dependencies.bashSessions.stop(
+            dependencies.principalId,
+            optionalString(args, "sandbox_id") ?? "",
+            optionalString(args, "session_id") ?? "",
+          );
         default: {
           if (!codexToolNames.has(request.params.name)) throw new Error(`Unknown tool: ${request.params.name}`);
           const sandboxId = optionalString(args, "sandbox_id");
