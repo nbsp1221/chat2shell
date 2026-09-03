@@ -80,7 +80,7 @@ Every tool call that reaches a running sandbox counts as activity, whether it su
 
 Cleanup checks run once per minute. Sandbox resources use Docker Sandboxes defaults. The outer MCP server accepts request bodies up to 20 MiB.
 
-Bash has no execution timeout unless `timeout_ms` is explicitly provided. `bash` always returns a `session_id` and waits up to `yield_time_ms`, which defaults to 10 seconds and accepts at most 60 seconds. `bash_poll` waits for new output, process exit, or its own `yield_time_ms` expiry; that wait also defaults to 10 seconds and accepts at most 60 seconds. It returns only new combined stdout/stderr. Poll again while `status` is `running` or `has_more_output` is true. `bash_stop` sends SIGTERM followed by SIGKILL after 1.5 seconds if necessary. chat2shell does not redact Bash output: everything printed inside the sandbox is visible to the MCP client. Sensitive data must be controlled by the files and credentials explicitly made available to the sandbox. Bash sessions exist only in their sandbox and disappear when that sandbox is removed. They are not recovered after a chat2shell restart, because restart reconciliation removes the old sandbox.
+Bash has no execution timeout unless `timeout_ms` is explicitly provided. `bash` always returns a `session_id` and waits up to `yield_time_ms`, which defaults to 10 seconds and accepts at most 60 seconds. If command launch succeeds but the initial status/output snapshot cannot be read, `bash` preserves the session and conservatively returns `status: running` with no output so the caller can recover with `bash_poll`. `bash_poll` waits for new output, process exit, or its own `yield_time_ms` expiry; that wait also defaults to 10 seconds and accepts at most 60 seconds. It returns only new combined stdout/stderr. Poll again while `status` is `running` or `has_more_output` is true. `bash_stop` sends SIGTERM followed by SIGKILL after 1.5 seconds if necessary. chat2shell does not redact Bash output: everything printed inside the sandbox is visible to the MCP client. Sensitive data must be controlled by the files and credentials explicitly made available to the sandbox. Bash sessions exist only in their sandbox and disappear when that sandbox is removed. They are not recovered after a chat2shell restart, because restart reconciliation removes the old sandbox.
 
 If CodexPro becomes unavailable, the sandbox changes to `failed`. `sandbox_list` shows it, and the user must destroy it before creating a replacement. chat2shell does not guess how to recover it.
 
@@ -90,14 +90,16 @@ Destroying an active sandbox follows the same workspace policy, so a managed wor
 
 ## Setup
 
-Requirements are Node.js 22 or newer, pnpm, Docker Sandboxes (`sbx`), and the previously installed Secure MCP Tunnel client.
+Requirements are Node.js 24 or newer, pnpm, Docker Sandboxes (`sbx`), and the previously installed Secure MCP Tunnel client.
 
 ```bash
 pnpm install
 ./scripts/setup-template.sh
 pnpm check
-pnpm test:integration
+pnpm test:e2e
 ```
+
+`pnpm check` is the normal development and CI quality gate: formatting, linting, typechecking, unit and integration tests, and the production build. It deliberately excludes real Docker Sandbox E2E tests. Run `pnpm test:e2e` on a trusted host with `sbx` and the local CodexPro template installed. See [`test/README.md`](./test/README.md) for the test boundaries and individual commands.
 
 `setup-template.sh` creates the local `chat2shell-codexpro:0.30.0` sandbox template once.
 The template contains CodexPro and its npm dependencies, but no workspace, application source, credentials, or tunnel secret.
@@ -148,13 +150,13 @@ Unexported changes in a private clone disappear when its sandbox is destroyed, s
 ## MCP workflow
 
 ```json
-{"workspace_mode":"managed"}
+{ "workspace_mode": "managed" }
 ```
 
 Pass the returned sandbox ID to every CodexPro tool:
 
 ```json
-{"sandbox_id":"sbx_...","command":"pnpm test"}
+{ "sandbox_id": "sbx_...", "command": "pnpm test" }
 ```
 
 Long commands use the same `bash` tool. A running result includes a session ID for later output or termination:
