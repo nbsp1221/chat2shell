@@ -15,7 +15,8 @@ interface BashSession {
   readonly ownerId: string;
   readonly sandboxId: string;
   readonly directory: string;
-  outputOffset: number;
+  readOffset: number;
+  pendingOutput: Buffer;
   snapshotQueue: Promise<void>;
 }
 
@@ -130,7 +131,8 @@ export class BashSessionService {
       ownerId,
       sandboxId,
       directory: `${SESSION_ROOT}/${id}`,
-      outputOffset: 0,
+      readOffset: 0,
+      pendingOutput: Buffer.alloc(0),
       snapshotQueue: Promise.resolve(),
     };
     this.#sessions.set(id, session);
@@ -184,7 +186,7 @@ export class BashSessionService {
     const statusOutput = stdout(await this.#executor.call(session.ownerId, session.sandboxId, "bash", {
       command: [
         checks > 0
-          ? `for ((i=0; i<${checks}; i++)); do [[ -f ${session.directory}/exit-code ]] && break; [[ $(wc -c <${session.directory}/output.log) -gt ${session.outputOffset} ]] && break; sleep 0.1; done`
+          ? `for ((i=0; i<${checks}; i++)); do [[ -f ${session.directory}/exit-code ]] && break; [[ $(wc -c <${session.directory}/output.log) -gt ${session.readOffset} ]] && break; sleep 0.1; done`
           : ":",
         `if [[ -f ${session.directory}/exit-code ]]; then`,
         `  printf 'exited\\t%s\\t' \"$(cat ${session.directory}/exit-code)\"`,
@@ -196,25 +198,30 @@ export class BashSessionService {
       timeout_ms: Math.max(5_000, yieldTimeMs + 5_000),
     }));
     const status = this.#parseStatus(statusOutput);
-    const bytesToRead = Math.min(OUTPUT_CHUNK_BYTES, Math.max(0, status.outputSize - session.outputOffset));
+    const bytesToRead = Math.min(OUTPUT_CHUNK_BYTES, Math.max(0, status.outputSize - session.readOffset));
     let output = "";
     if (bytesToRead > 0) {
       const encoded = stdout(await this.#executor.call(session.ownerId, session.sandboxId, "bash", {
-        command: `tail -c +${session.outputOffset + 1} ${session.directory}/output.log | head -c ${bytesToRead} | base64 -w 0`,
+        command: `tail -c +${session.readOffset + 1} ${session.directory}/output.log | head -c ${bytesToRead} | base64 -w 0`,
         timeout_ms: 5_000,
       }));
       const bytes = Buffer.from(encoded, "base64");
       if (bytes.length !== bytesToRead) throw new Error("Invalid encoded Bash output");
-      const prefixLength = completeUtf8PrefixLength(bytes, status.status === "exited" && status.outputSize === session.outputOffset + bytes.length);
-      output = bytes.subarray(0, prefixLength).toString("utf8");
-      session.outputOffset += prefixLength;
+      session.readOffset += bytes.length;
+      session.pendingOutput = Buffer.concat([session.pendingOutput, bytes]);
     }
+    const prefixLength = completeUtf8PrefixLength(
+      session.pendingOutput,
+      status.status === "exited" && status.outputSize === session.readOffset,
+    );
+    output = session.pendingOutput.subarray(0, prefixLength).toString("utf8");
+    session.pendingOutput = session.pendingOutput.subarray(prefixLength);
     const structuredContent = {
       session_id: session.id,
       status: status.status,
       exit_code: status.exitCode,
       output,
-      has_more_output: status.outputSize > session.outputOffset,
+      has_more_output: status.outputSize > session.readOffset,
     };
     return {
       content: [{ type: "text", text: JSON.stringify(structuredContent, null, 2) }],

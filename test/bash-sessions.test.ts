@@ -193,6 +193,25 @@ test("preserves UTF-8 characters across output chunks", async (context) => {
   assert.equal(`${String(first.structuredContent?.output)}${String(second.structuredContent?.output)}`, expected);
 });
 
+test("waits for completion bytes instead of spinning on partial UTF-8", async (context) => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "chat2shell-bash-test-"));
+  context.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const sessions = new BashSessionService(new LocalBashExecutor(cwd));
+  const started = await sessions.start("owner", "sandbox", {
+    command: "printf '\\360'; sleep 1; printf '\\237\\230\\200'",
+    yieldTimeMs: 100,
+  });
+  const id = sessionId(started);
+  context.after(() => cleanupSession(id));
+
+  assert.equal(started.structuredContent?.output, "");
+  assert.equal(started.structuredContent?.has_more_output, false);
+  const polled = await sessions.poll("owner", "sandbox", id, { yieldTimeMs: 2_000 });
+
+  assert.equal(polled.structuredContent?.status, "exited");
+  assert.equal(polled.structuredContent?.output, "😀");
+});
+
 test("returns exact sandbox output without cross-chunk redaction", async (context) => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "chat2shell-bash-test-"));
   context.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
