@@ -41,16 +41,12 @@ export interface SandboxDriver {
 export class SbxDriver implements SandboxDriver {
   readonly #binary: string;
   readonly #template: string;
-  readonly #cpus: number;
-  readonly #memory: string;
   readonly #sandboxPort: number;
   readonly #codexProProcesses = new Map<string, ChildProcess>();
 
-  constructor(options: { binary: string; template: string; cpus: number; memory: string; sandboxPort: number }) {
+  constructor(options: { binary: string; template: string; sandboxPort: number }) {
     this.#binary = options.binary;
     this.#template = options.template;
-    this.#cpus = options.cpus;
-    this.#memory = options.memory;
     this.#sandboxPort = options.sandboxPort;
   }
 
@@ -64,7 +60,7 @@ export class SbxDriver implements SandboxDriver {
 
   async create(runtimeName: string, workspace: Workspace): Promise<{ endpoint: string; runtimeRoot: string }> {
     const args = ["create", "--quiet", "--name", runtimeName, "--template", this.#template,
-      "--cpus", String(this.#cpus), "--memory", this.#memory, "--publish", String(this.#sandboxPort),
+      "--publish", String(this.#sandboxPort),
       "--deny-network", "openrouter.ai"];
     if (workspace.mode === "clone") args.push("--clone");
     args.push("shell", workspace.root);

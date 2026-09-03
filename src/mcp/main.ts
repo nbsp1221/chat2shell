@@ -19,8 +19,6 @@ const workspaces = new WorkspaceService({
 const driver = new SbxDriver({
   binary: config.sbxBinary,
   template: config.sandboxTemplate,
-  cpus: config.sandboxCpus,
-  memory: config.sandboxMemory,
   sandboxPort: config.sandboxPort,
 });
 await driver.assertReady();

@@ -78,7 +78,7 @@ The complete automatic lifetime policy is intentionally small:
 
 Every tool call that reaches a running sandbox counts as activity, whether it succeeds or fails. Expiration is checked between calls and never interrupts a command already running. The trash directory is not emptied automatically. Host workspaces are outside chat2shell's ownership and are never moved or deleted.
 
-Cleanup checks run once per minute. Each sandbox receives 2 CPUs and 4 GiB of memory. Bash commands default to a 30-second timeout and may request up to 10 minutes. The outer MCP server accepts request bodies up to 20 MiB.
+Cleanup checks run once per minute. Sandbox resources use Docker Sandboxes defaults. Bash commands default to a 30-second timeout and may request up to 10 minutes. The outer MCP server accepts request bodies up to 20 MiB.
 
 If CodexPro becomes unavailable, the sandbox changes to `failed`. `sandbox_list` shows it, and the user must destroy it before creating a replacement. chat2shell does not guess how to recover it.
 
