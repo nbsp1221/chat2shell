@@ -15,7 +15,7 @@ Public policy boundary: chat2shell MCP server
     | fixed operations and stable ids only
     v
 Host privilege boundary: narrow SbxDriver
-    | validated workspace + fixed template/resources/port
+    | validated workspace + pinned template + port mapping
     v
 Primary execution boundary: Docker Sandbox microVM
     | full shell, workspace access, private Docker Engine
@@ -73,7 +73,7 @@ Only the local CLI can approve or reject it, after which MCP callers refer to th
 1. Resolve an approved workspace or create a managed workspace.
 2. Reuse its active sandbox if one exists.
 3. Persist a `creating` record before invoking external commands.
-4. Create a named `shell` microVM from the pinned CodexPro template with fixed CPU, memory, and one dynamic loopback port.
+4. Create a named `shell` microVM from the pinned CodexPro template with Docker Sandboxes resource defaults and one dynamic loopback port.
 5. Generate a random CodexPro bearer token.
 6. Start CodexPro inside the microVM with full bash, workspace writes, and only the sandbox workspace as an allowed root.
 7. Verify its authenticated health endpoint and persist the endpoint and token in the mode-`0600` SQLite database.
@@ -84,12 +84,24 @@ Failures remove a partially created runtime and persist a `failed` record for di
 ## CodexPro routing
 
 chat2shell loads a pinned static copy of the supported CodexPro tool descriptors; it does not import, start, or inspect CodexPro on the host.
-It adds a required `sandbox_id` to every schema while retaining the original tool name, description, annotations, attachment metadata, and CodexPro arguments.
+It adds a required `sandbox_id` to every schema. Ordinary tool calls retain their CodexPro contract; Bash replaces CodexPro's request-bound timeout with the explicit execution-session contract below.
 
 For each call, chat2shell validates ownership, expiration, and CodexPro health, removes the outer `sandbox_id`, and forwards the call through an authenticated MCP session to CodexPro inside that microVM.
 Calls are serialized per sandbox to prevent concurrent conversations from racing on session selection or writes.
 
 CodexPro assigns its own path-derived workspace ID inside the microVM. That internal ID is not part of the chat2shell contract, so chat2shell replaces it in tool results with the persistent public `workspace_id` associated with the sandbox.
+
+## Bash execution sessions
+
+CodexPro remains the only Bash executor. chat2shell starts each command through CodexPro as a detached process group inside the selected microVM, with combined stdout/stderr written to that microVM's `/tmp` directory.
+
+`bash` always returns a random `session_id` and waits for completion for 10 seconds by default. `yield_time_ms` can explicitly change that wait from 0 to 60 seconds. If the command exits, the call returns `status: exited`, its output, and its exit code; otherwise it returns the output so far and `status: running`. This wait controls only when MCP yields a response and never kills the command.
+
+There is no command lifetime limit unless `timeout_ms` is explicitly supplied. `bash_poll` waits until new output appears, the process exits, or its `yield_time_ms` expires. Its wait defaults to 10 seconds and accepts at most 60 seconds. It returns only output not returned by earlier calls and reports the current status and exit code. Polls for one session are serialized. Each response reads at most 60,000 new bytes, preserves complete UTF-8 characters across reads, and reports `has_more_output` when already-buffered output remains. Call it again while `status` is `running` or `has_more_output` is true. `bash_stop` terminates the process group with SIGTERM and escalates to SIGKILL after 1.5 seconds.
+
+Output bytes are transferred through CodexPro as Base64 so its request-level text transformation cannot corrupt or selectively hide streamed content. chat2shell decodes the bytes but does not redact them. Everything printed inside the sandbox is visible to the MCP client; sensitive data is controlled by the files and credentials explicitly made available at the sandbox boundary.
+
+Session metadata lives only in the chat2shell process and session files live only in the microVM. Sandbox deletion removes the processes and files and forgets their IDs. Controller restart does not recover sessions because existing sandboxes are already invalidated by the restart policy. There is no queue, scheduler, retry, automatic restart, or persistent job history.
 
 ## Expiration and failure
 

@@ -15,8 +15,8 @@ ChatGPT conversations
             -> one private Docker Engine
 ```
 
-The host process exposes six management tools and a static contract for eighteen relevant CodexPro tools.
-Every CodexPro tool has an additional required `sandbox_id`; chat2shell strips that routing field and forwards the remaining arguments to CodexPro inside the selected microVM.
+The host process exposes six management tools, eighteen relevant CodexPro tools, and two Bash session controls.
+Every tool that operates inside a sandbox requires `sandbox_id`. chat2shell forwards ordinary CodexPro calls into the selected microVM and adapts Bash calls into bounded MCP requests without changing where commands execute.
 Calls to the same sandbox are serialized, while different conversations can reuse the same stable ID returned by `sandbox_list`.
 
 The static contract deliberately excludes CodexPro's generic supertool, self-test, and workspace-switching tool because they duplicate visible tools or bypass the sandbox's assigned workspace. CodexPro is installed only in the sandbox template; the host application does not import or execute it.
@@ -78,7 +78,9 @@ The complete automatic lifetime policy is intentionally small:
 
 Every tool call that reaches a running sandbox counts as activity, whether it succeeds or fails. Expiration is checked between calls and never interrupts a command already running. The trash directory is not emptied automatically. Host workspaces are outside chat2shell's ownership and are never moved or deleted.
 
-Cleanup checks run once per minute. Sandbox resources use Docker Sandboxes defaults. Bash commands default to a 30-second timeout and may request up to 10 minutes. The outer MCP server accepts request bodies up to 20 MiB.
+Cleanup checks run once per minute. Sandbox resources use Docker Sandboxes defaults. The outer MCP server accepts request bodies up to 20 MiB.
+
+Bash has no execution timeout unless `timeout_ms` is explicitly provided. `bash` always returns a `session_id` and waits up to `yield_time_ms`, which defaults to 10 seconds and accepts at most 60 seconds. `bash_poll` waits for new output, process exit, or its own `yield_time_ms` expiry; that wait also defaults to 10 seconds and accepts at most 60 seconds. It returns only new combined stdout/stderr. Poll again while `status` is `running` or `has_more_output` is true. `bash_stop` sends SIGTERM followed by SIGKILL after 1.5 seconds if necessary. chat2shell does not redact Bash output: everything printed inside the sandbox is visible to the MCP client. Sensitive data must be controlled by the files and credentials explicitly made available to the sandbox. Bash sessions exist only in their sandbox and disappear when that sandbox is removed. They are not recovered after a chat2shell restart, because restart reconciliation removes the old sandbox.
 
 If CodexPro becomes unavailable, the sandbox changes to `failed`. `sandbox_list` shows it, and the user must destroy it before creating a replacement. chat2shell does not guess how to recover it.
 
@@ -155,6 +157,14 @@ Pass the returned sandbox ID to every CodexPro tool:
 {"sandbox_id":"sbx_...","command":"pnpm test"}
 ```
 
+Long commands use the same `bash` tool. A running result includes a session ID for later output or termination:
+
+```text
+bash -> { "session_id": "bash_...", "status": "running", "output": "..." }
+bash_poll -> { "sandbox_id": "sbx_...", "session_id": "bash_...", "yield_time_ms": 10000 }
+bash_stop -> { "sandbox_id": "sbx_...", "session_id": "bash_..." }
+```
+
 To view a web application, start it on every sandbox interface and expose its port:
 
 ```text
@@ -183,7 +193,7 @@ Current locations are:
 - managed workspaces: `~/.chat2shell/workspaces`
 - host allow root: `~/repositories`
 
-The fixed template, resource limits, timeouts, and retention values are listed in Current policy above.
+The pinned template, Bash session behavior, and retention values are listed in Current policy above. CPU, memory, and disk use Docker Sandboxes defaults rather than chat2shell policy.
 
 OAuth, reboot persistence, the monitoring dashboard, and a browser approval UI do not exist. They will be considered only after the current prototype proves useful.
 
