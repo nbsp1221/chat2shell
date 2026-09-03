@@ -1,12 +1,12 @@
-import { SingleUserAuthProvider } from "../auth/single-user-provider.js";
-import { CodexProClientPool } from "../codexpro/client-pool.js";
-import { codexProToolManifest } from "../codexpro/tool-manifest.js";
-import { loadAppConfig } from "../config.js";
-import { SbxDriver } from "../sandbox/sbx-driver.js";
-import { SandboxService } from "../sandbox/service.js";
-import { StateDatabase } from "../state/database.js";
-import { WorkspaceService } from "../workspaces/service.js";
-import { createGateway } from "./gateway.js";
+import { SingleUserAuthProvider } from '../auth/single-user-provider.js';
+import { CodexProClientPool } from '../codexpro/client-pool.js';
+import { codexProToolManifest } from '../codexpro/tool-manifest.js';
+import { loadAppConfig } from '../config.js';
+import { SbxDriver } from '../sandbox/sbx-driver.js';
+import { SandboxService } from '../sandbox/service.js';
+import { StateDatabase } from '../state/database.js';
+import { WorkspaceService } from '../workspaces/service.js';
+import { createGateway } from './gateway.js';
 
 const config = loadAppConfig();
 const database = new StateDatabase(config.databasePath);
@@ -37,19 +37,34 @@ server.listen(config.port, config.host, () => {
 });
 
 const reaper = setInterval(() => {
-  sandboxes.reap().catch((error) => console.error("[chat2shell] reaper failed", error));
+  sandboxes.reap().catch((error) => console.error('[chat2shell] reaper failed', error));
 }, config.reaperIntervalMs);
 reaper.unref();
 
 let shuttingDown = false;
+
 async function shutdown(): Promise<void> {
-  if (shuttingDown) return;
+  if (shuttingDown) {
+    return;
+  }
   shuttingDown = true;
   clearInterval(reaper);
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await new Promise<void>((resolve) => {
+    server.close(() => resolve());
+  });
   await codexPro.closeAll();
   database.close();
 }
 
-process.on("SIGINT", () => { shutdown().finally(() => process.exit(0)); });
-process.on("SIGTERM", () => { shutdown().finally(() => process.exit(0)); });
+function requestShutdown(): void {
+  void shutdown().then(
+    () => process.exit(0),
+    (error: unknown) => {
+      console.error('[chat2shell] shutdown failed', error);
+      process.exit(1);
+    },
+  );
+}
+
+process.on('SIGINT', requestShutdown);
+process.on('SIGTERM', requestShutdown);

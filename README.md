@@ -88,14 +88,16 @@ Destroying an active sandbox follows the same workspace policy, so a managed wor
 
 ## Setup
 
-Requirements are Node.js 22 or newer, pnpm, Docker Sandboxes (`sbx`), and the previously installed Secure MCP Tunnel client.
+Requirements are Node.js 24 or newer, pnpm, Docker Sandboxes (`sbx`), and the previously installed Secure MCP Tunnel client.
 
 ```bash
 pnpm install
 ./scripts/setup-template.sh
 pnpm check
-pnpm test:integration
+pnpm test:e2e
 ```
+
+`pnpm check` is the normal development and CI quality gate: formatting, linting, typechecking, unit and integration tests, and the production build. It deliberately excludes real Docker Sandbox E2E tests. Run `pnpm test:e2e` on a trusted host with `sbx` and the local CodexPro template installed. See [`test/README.md`](./test/README.md) for the test boundaries and individual commands.
 
 `setup-template.sh` creates the local `chat2shell-codexpro:0.30.0` sandbox template once.
 The template contains CodexPro and its npm dependencies, but no workspace, application source, credentials, or tunnel secret.
@@ -146,13 +148,13 @@ Unexported changes in a private clone disappear when its sandbox is destroyed, s
 ## MCP workflow
 
 ```json
-{"workspace_mode":"managed"}
+{ "workspace_mode": "managed" }
 ```
 
 Pass the returned sandbox ID to every CodexPro tool:
 
 ```json
-{"sandbox_id":"sbx_...","command":"pnpm test"}
+{ "sandbox_id": "sbx_...", "command": "pnpm test" }
 ```
 
 To view a web application, start it on every sandbox interface and expose its port:

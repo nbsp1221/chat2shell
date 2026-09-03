@@ -1,4 +1,4 @@
-import type { IncomingHttpHeaders } from "node:http";
+import type { IncomingHttpHeaders } from 'node:http';
 
 interface JsonRpcRequest {
   readonly id?: unknown;
@@ -6,7 +6,7 @@ interface JsonRpcRequest {
 }
 
 export interface JsonRpcErrorResponse {
-  readonly jsonrpc: "2.0";
+  readonly jsonrpc: '2.0';
   readonly id: unknown;
   readonly error: {
     readonly code: number;
@@ -18,20 +18,20 @@ export function sessionlessDiscoverResponse(
   headers: IncomingHttpHeaders,
   body: Buffer,
 ): JsonRpcErrorResponse | undefined {
-  if (typeof headers["mcp-session-id"] === "string") {
+  if (typeof headers['mcp-session-id'] === 'string') {
     return undefined;
   }
 
   try {
-    const request = JSON.parse(body.toString("utf8")) as JsonRpcRequest;
-    if (request.method !== "server/discover") {
+    const request = JSON.parse(body.toString('utf8')) as JsonRpcRequest;
+    if (request.method !== 'server/discover') {
       return undefined;
     }
 
     return {
-      jsonrpc: "2.0",
+      jsonrpc: '2.0',
       id: request.id ?? null,
-      error: { code: -32601, message: "Method not found" },
+      error: { code: -32601, message: 'Method not found' },
     };
   } catch {
     return undefined;

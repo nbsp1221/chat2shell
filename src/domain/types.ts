@@ -1,8 +1,8 @@
-export type WorkspaceKind = "managed" | "host";
-export type WorkspaceMode = "managed" | "clone" | "direct";
-export type WorkspaceStatus = "approved" | "retained" | "trashed";
-export type ApprovalStatus = "pending" | "approved" | "rejected";
-export type SandboxStatus = "creating" | "running" | "destroying" | "destroyed" | "failed";
+export type WorkspaceKind = 'managed' | 'host';
+export type WorkspaceMode = 'managed' | 'clone' | 'direct';
+export type WorkspaceStatus = 'approved' | 'retained' | 'trashed';
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
+export type SandboxStatus = 'creating' | 'running' | 'destroying' | 'destroyed' | 'failed';
 
 export interface Workspace {
   readonly id: string;
@@ -19,7 +19,7 @@ export interface Approval {
   readonly id: string;
   readonly ownerId: string;
   readonly requestedPath: string;
-  readonly mode: Exclude<WorkspaceMode, "managed">;
+  readonly mode: Exclude<WorkspaceMode, 'managed'>;
   readonly status: ApprovalStatus;
   readonly workspaceId?: string;
   readonly createdAt: number;
@@ -54,7 +54,7 @@ export interface SandboxSummary {
 }
 
 export interface SandboxCreateResult {
-  readonly status: "created" | "reused" | "approval_required";
+  readonly status: 'created' | 'reused' | 'approval_required';
   readonly sandbox?: SandboxSummary;
   readonly approval?: Approval;
 }
