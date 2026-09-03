@@ -5,10 +5,10 @@ import {
   ListToolsRequestSchema,
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
+import type { BashSessionService } from '../codexpro/bash-sessions.js';
 import type { CodexProClientPool } from '../codexpro/client-pool.js';
 import type { SandboxService } from '../sandbox/service.js';
 import type { WorkspaceService } from '../workspaces/service.js';
-import { scopedCodexProTool } from '../codexpro/tool-manifest.js';
 
 const sandboxCreateTool: Tool = {
   name: 'sandbox_create',
@@ -169,6 +169,7 @@ export interface ControlServerDependencies {
   readonly sandboxes: Pick<SandboxService, 'create' | 'list' | 'get' | 'expose' | 'destroy'>;
   readonly workspaces: Pick<WorkspaceService, 'list'>;
   readonly codexPro: Pick<CodexProClientPool, 'call'>;
+  readonly bashSessions: Pick<BashSessionService, 'start' | 'poll' | 'stop'>;
   readonly codexProTools: readonly Tool[];
 }
 
@@ -178,10 +179,10 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
     {
       capabilities: { tools: {} },
       instructions:
-        'Create or select an isolated sandbox first. Every CodexPro tool requires an explicit sandbox_id. Bash is unrestricted inside the sandbox but never has host shell or host Docker access.',
+        'Create or select an isolated sandbox first. Every sandbox tool requires an explicit sandbox_id. Bash is unrestricted inside the sandbox but never has host shell or host Docker access. Poll a Bash session with bash_poll while status=running or has_more_output=true, or terminate it with bash_stop.',
     },
   );
-  const codexTools = dependencies.codexProTools.map(scopedCodexProTool);
+  const codexTools = dependencies.codexProTools;
   const codexToolNames = new Set(codexTools.map((tool) => tool.name));
 
   server.setRequestHandler(ListToolsRequestSchema, () =>
@@ -231,6 +232,31 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
           );
         case 'workspace_list':
           return jsonResult({ workspaces: dependencies.workspaces.list(dependencies.principalId) });
+        case 'bash': {
+          const sandboxId = optionalString(args, 'sandbox_id');
+          if (!sandboxId) {
+            throw new Error('sandbox_id is required');
+          }
+          return dependencies.bashSessions.start(dependencies.principalId, sandboxId, {
+            command: optionalString(args, 'command') ?? '',
+            cwd: optionalString(args, 'cwd'),
+            yieldTimeMs: args.yield_time_ms as number | undefined,
+            timeoutMs: args.timeout_ms as number | undefined,
+          });
+        }
+        case 'bash_poll':
+          return dependencies.bashSessions.poll(
+            dependencies.principalId,
+            optionalString(args, 'sandbox_id') ?? '',
+            optionalString(args, 'session_id') ?? '',
+            { yieldTimeMs: args.yield_time_ms as number | undefined },
+          );
+        case 'bash_stop':
+          return dependencies.bashSessions.stop(
+            dependencies.principalId,
+            optionalString(args, 'sandbox_id') ?? '',
+            optionalString(args, 'session_id') ?? '',
+          );
         default: {
           if (!codexToolNames.has(request.params.name)) {
             throw new Error(`Unknown tool: ${request.params.name}`);

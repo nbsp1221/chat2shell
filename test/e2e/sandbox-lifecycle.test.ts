@@ -8,8 +8,9 @@ import path from 'node:path';
 import { expect, test } from 'vitest';
 import type { AppConfig } from '../../src/config.js';
 import { SingleUserAuthProvider } from '../../src/auth/single-user-provider.js';
+import { BashSessionService } from '../../src/codexpro/bash-sessions.js';
 import { CodexProClientPool } from '../../src/codexpro/client-pool.js';
-import { codexProToolManifest } from '../../src/codexpro/tool-manifest.js';
+import { publicCodexProTools } from '../../src/codexpro/tool-manifest.js';
 import { createGateway } from '../../src/mcp/gateway.js';
 import { SbxDriver } from '../../src/sandbox/sbx-driver.js';
 import { SandboxService } from '../../src/sandbox/service.js';
@@ -101,10 +102,11 @@ test('routes full shell and private Docker only into a real microVM', async () =
   });
   const sandboxes = new SandboxService({ config: appConfig, database, driver, workspaces });
   const clients = new CodexProClientPool(sandboxes);
-  const tools = codexProToolManifest();
+  const bashSessions = new BashSessionService(clients, (listener) => sandboxes.onDestroy(listener));
+  const tools = publicCodexProTools();
   const gateway = createGateway(appConfig, {
     authProvider: new SingleUserAuthProvider(),
-    controlServer: { codexPro: clients, codexProTools: tools, sandboxes, workspaces },
+    controlServer: { bashSessions, codexPro: clients, codexProTools: tools, sandboxes, workspaces },
   });
   let sandboxId: string | undefined;
   const hostEscapeMarker = path.join(os.tmpdir(), `chat2shell-host-escape-${randomUUID()}`);
@@ -173,25 +175,50 @@ test('routes full shell and private Docker only into a real microVM', async () =
     expect(docker.isError, JSON.stringify(docker)).not.toBe(true);
 
     const longCommand = await callTool(url, 7, 'bash', {
-      command: 'sleep 35 && printf alive',
+      command: 'printf start; sleep 2; printf alive',
       sandbox_id: sandboxId,
-      timeout_ms: 60_000,
+      yield_time_ms: 100,
     });
     expect(longCommand.isError, JSON.stringify(longCommand)).not.toBe(true);
-    const afterLongCommand = await callTool(url, 8, 'bash', {
+    const started = longCommand.structuredContent as {
+      output: string;
+      session_id: string;
+      status: string;
+    };
+    expect(started.status).toBe('running');
+    expect(started.output).toMatch(/start/);
+
+    const polled = await callTool(url, 8, 'bash_poll', {
+      sandbox_id: sandboxId,
+      session_id: started.session_id,
+      yield_time_ms: 3_000,
+    });
+    expect((polled.structuredContent as { status: string }).status).toBe('exited');
+    expect((polled.structuredContent as { output: string }).output).toMatch(/alive/);
+
+    const timed = await callTool(url, 9, 'bash', {
+      command: 'sleep 30',
+      sandbox_id: sandboxId,
+      timeout_ms: 1_000,
+      yield_time_ms: 2_000,
+    });
+    expect((timed.structuredContent as { status: string }).status).toBe('exited');
+    expect((timed.structuredContent as { exit_code: number }).exit_code).toBe(124);
+
+    const afterLongCommand = await callTool(url, 10, 'bash', {
       command: 'printf still-alive',
       sandbox_id: sandboxId,
     });
     expect(afterLongCommand.isError, JSON.stringify(afterLongCommand)).not.toBe(true);
 
-    const preview = await callTool(url, 9, 'bash', {
+    const preview = await callTool(url, 11, 'bash', {
       command:
         'nohup node -e \'require("http").createServer((_request, response) => response.end("sandbox-preview")).listen(3000, "0.0.0.0")\' >/tmp/chat2shell-preview.log 2>&1 </dev/null &',
       sandbox_id: sandboxId,
     });
     expect(preview.isError, JSON.stringify(preview)).not.toBe(true);
 
-    const exposed = await callTool(url, 10, 'sandbox_expose', {
+    const exposed = await callTool(url, 12, 'sandbox_expose', {
       port: 3_000,
       sandbox_id: sandboxId,
     });
@@ -207,18 +234,18 @@ test('routes full shell and private Docker only into a real microVM', async () =
       'sandbox-preview',
     );
 
-    const repeated = await callTool(url, 11, 'sandbox_expose', {
+    const repeated = await callTool(url, 13, 'sandbox_expose', {
       port: 3_000,
       sandbox_id: sandboxId,
     });
     expect(repeated.structuredContent).toEqual(exposure);
 
-    const listed = await callTool(url, 12, 'sandbox_list', {});
+    const listed = await callTool(url, 14, 'sandbox_list', {});
     expect(
       (listed.structuredContent as { sandboxes: Array<{ id: string }> }).sandboxes[0]?.id,
     ).toBe(sandboxId);
 
-    const destroyed = await callTool(url, 13, 'sandbox_destroy', { sandbox_id: sandboxId });
+    const destroyed = await callTool(url, 15, 'sandbox_destroy', { sandbox_id: sandboxId });
     expect((destroyed.structuredContent as { status: string }).status).toBe('destroyed');
     sandboxId = undefined;
     expect(workspaces.list('local-owner')[0]?.status).toBe('retained');
@@ -226,7 +253,7 @@ test('routes full shell and private Docker only into a real microVM', async () =
     const hostRepository = path.join(allowedRoot, 'repository');
     execFileSync('git', ['clone', '--quiet', '--no-hardlinks', process.cwd(), hostRepository]);
     const cloneWorkspace = workspaces.registerHost('local-owner', hostRepository, 'clone');
-    const cloneCreateResult = await callTool(url, 14, 'sandbox_create', {
+    const cloneCreateResult = await callTool(url, 16, 'sandbox_create', {
       workspace_id: cloneWorkspace.id,
     });
     const cloneCreated = cloneCreateResult.structuredContent as {
@@ -236,7 +263,7 @@ test('routes full shell and private Docker only into a real microVM', async () =
     expect(cloneCreated.status).toBe('created');
     sandboxId = cloneCreated.sandbox.id;
 
-    const cloneWrite = await callTool(url, 15, 'write', {
+    const cloneWrite = await callTool(url, 17, 'write', {
       content: 'private clone\n',
       path: 'clone-proof.txt',
       sandbox_id: sandboxId,
@@ -247,7 +274,7 @@ test('routes full shell and private Docker only into a real microVM', async () =
       'clone mode must not modify the host checkout',
     ).toBe(false);
 
-    await callTool(url, 16, 'sandbox_destroy', { sandbox_id: sandboxId });
+    await callTool(url, 18, 'sandbox_destroy', { sandbox_id: sandboxId });
     sandboxId = undefined;
   } finally {
     if (sandboxId) {

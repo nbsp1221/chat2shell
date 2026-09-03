@@ -35,6 +35,18 @@ function config(): AppConfig {
   };
 }
 
+const unusedBashSessions = {
+  poll() {
+    return Promise.reject(new Error('not used'));
+  },
+  start() {
+    return Promise.reject(new Error('not used'));
+  },
+  stop() {
+    return Promise.reject(new Error('not used'));
+  },
+};
+
 async function rpc(
   url: string,
   id: number,
@@ -66,6 +78,7 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
           return Promise.reject(new Error('not used'));
         },
       },
+      bashSessions: unusedBashSessions,
       codexProTools: [],
       sandboxes: {
         create() {
@@ -143,15 +156,15 @@ test('routes CodexPro tools by sandbox_id without forwarding routing fields', as
     sandboxId: string;
     toolName: string;
   }> = [];
-  const bashTool: Tool = {
-    description: 'Run a command',
+  const readTool: Tool = {
+    description: 'Read a file',
     inputSchema: {
       additionalProperties: false,
-      properties: { command: { type: 'string' } },
-      required: ['command'],
+      properties: { path: { type: 'string' } },
+      required: ['path'],
       type: 'object',
     },
-    name: 'bash',
+    name: 'read',
   };
   const gateway = createGateway(config(), {
     authProvider: new SingleUserAuthProvider(),
@@ -162,7 +175,8 @@ test('routes CodexPro tools by sandbox_id without forwarding routing fields', as
           return Promise.resolve({ content: [{ text: 'ok', type: 'text' }] });
         },
       },
-      codexProTools: [bashTool],
+      bashSessions: unusedBashSessions,
+      codexProTools: [readTool],
       sandboxes: {
         create() {
           return Promise.reject(new Error('not used'));
@@ -203,22 +217,22 @@ test('routes CodexPro tools by sandbox_id without forwarding routing fields', as
   });
 
   const called = await rpc(url, 2, 'tools/call', {
-    arguments: { command: 'pwd', sandbox_id: 'sbx_test' },
-    name: 'bash',
+    arguments: { path: 'README.md', sandbox_id: 'sbx_test' },
+    name: 'read',
   });
   expect((called.result as { isError?: boolean }).isError).not.toBe(true);
   expect(calls).toEqual([
     {
-      args: { command: 'pwd' },
+      args: { path: 'README.md' },
       ownerId: 'local-owner',
       sandboxId: 'sbx_test',
-      toolName: 'bash',
+      toolName: 'read',
     },
   ]);
 
   const rejected = await rpc(url, 3, 'tools/call', {
-    arguments: { command: 'pwd', sandbox_id: 'sbx_test', workspace_id: 'ws_internal' },
-    name: 'bash',
+    arguments: { path: 'README.md', sandbox_id: 'sbx_test', workspace_id: 'ws_internal' },
+    name: 'read',
   });
   const rejectedResult = rejected.result as {
     content: Array<{ text?: string; type: string }>;
