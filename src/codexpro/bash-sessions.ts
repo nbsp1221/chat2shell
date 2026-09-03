@@ -16,6 +16,7 @@ interface BashSession {
   readonly sandboxId: string;
   readonly directory: string;
   outputOffset: number;
+  snapshotQueue: Promise<void>;
 }
 
 interface SessionStatus {
@@ -61,6 +62,19 @@ function boundedInteger(name: string, value: number | undefined, fallback: numbe
     throw new Error(`${name} must be an integer from 0 to ${maximum ?? Number.MAX_SAFE_INTEGER}`);
   }
   return resolved;
+}
+
+function completeUtf8PrefixLength(bytes: Buffer, finalChunk: boolean): number {
+  if (finalChunk || bytes.length === 0) return bytes.length;
+  let leadIndex = bytes.length - 1;
+  while (leadIndex >= 0 && (bytes[leadIndex]! & 0xc0) === 0x80) leadIndex -= 1;
+  if (leadIndex < 0) return bytes.length;
+  const lead = bytes[leadIndex]!;
+  let expectedLength = 1;
+  if (lead >= 0xc2 && lead <= 0xdf) expectedLength = 2;
+  else if (lead >= 0xe0 && lead <= 0xef) expectedLength = 3;
+  else if (lead >= 0xf0 && lead <= 0xf4) expectedLength = 4;
+  return bytes.length - leadIndex < expectedLength ? leadIndex : bytes.length;
 }
 
 function launchScript(session: BashSession, command: string, yieldTimeMs: number, timeoutMs: number | undefined): string {
@@ -117,6 +131,7 @@ export class BashSessionService {
       sandboxId,
       directory: `${SESSION_ROOT}/${id}`,
       outputOffset: 0,
+      snapshotQueue: Promise.resolve(),
     };
     this.#sessions.set(id, session);
     try {
@@ -159,6 +174,12 @@ export class BashSessionService {
   }
 
   async #snapshot(session: BashSession, yieldTimeMs = 0): Promise<CallToolResult> {
+    const result = session.snapshotQueue.then(() => this.#readSnapshot(session, yieldTimeMs));
+    session.snapshotQueue = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  async #readSnapshot(session: BashSession, yieldTimeMs: number): Promise<CallToolResult> {
     const checks = Math.ceil(yieldTimeMs / 100);
     const statusOutput = stdout(await this.#executor.call(session.ownerId, session.sandboxId, "bash", {
       command: [
@@ -178,11 +199,15 @@ export class BashSessionService {
     const bytesToRead = Math.min(OUTPUT_CHUNK_BYTES, Math.max(0, status.outputSize - session.outputOffset));
     let output = "";
     if (bytesToRead > 0) {
-      output = stdout(await this.#executor.call(session.ownerId, session.sandboxId, "bash", {
-        command: `tail -c +${session.outputOffset + 1} ${session.directory}/output.log | head -c ${bytesToRead}`,
+      const encoded = stdout(await this.#executor.call(session.ownerId, session.sandboxId, "bash", {
+        command: `tail -c +${session.outputOffset + 1} ${session.directory}/output.log | head -c ${bytesToRead} | base64 -w 0`,
         timeout_ms: 5_000,
       }));
-      session.outputOffset += bytesToRead;
+      const bytes = Buffer.from(encoded, "base64");
+      if (bytes.length !== bytesToRead) throw new Error("Invalid encoded Bash output");
+      const prefixLength = completeUtf8PrefixLength(bytes, status.status === "exited" && status.outputSize === session.outputOffset + bytes.length);
+      output = bytes.subarray(0, prefixLength).toString("utf8");
+      session.outputOffset += prefixLength;
     }
     const structuredContent = {
       session_id: session.id,
