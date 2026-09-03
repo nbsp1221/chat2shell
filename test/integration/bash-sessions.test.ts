@@ -37,13 +37,11 @@ class LocalBashExecutor {
 class FailOneCallExecutor {
   readonly executor: LocalBashExecutor;
   readonly failOnCall: number;
-  readonly beforeFailure?: () => void;
   calls = 0;
 
-  constructor(cwd: string, failOnCall: number, beforeFailure?: () => void) {
+  constructor(cwd: string, failOnCall: number) {
     this.executor = new LocalBashExecutor(cwd);
     this.failOnCall = failOnCall;
-    this.beforeFailure = beforeFailure;
   }
 
   call(
@@ -54,7 +52,6 @@ class FailOneCallExecutor {
   ): Promise<CallToolResult> {
     this.calls += 1;
     if (this.calls === this.failOnCall) {
-      this.beforeFailure?.();
       return Promise.reject(new Error(`injected executor failure ${this.calls}`));
     }
     return this.executor.call(ownerId, sandboxId, toolName, args);
@@ -174,17 +171,30 @@ test('preserves the session handle when the initial snapshot fails', async () =>
 });
 
 test('does not return a stale handle after concurrent sandbox destruction', async () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'chat2shell-bash-test-'));
-  onTestFinished(() => fs.rmSync(cwd, { recursive: true, force: true }));
   let destroyListener: ((sandboxId: string) => void) | undefined;
-  const executor = new FailOneCallExecutor(cwd, 2, () => destroyListener?.('sandbox'));
+  let calls = 0;
+  const executor = {
+    call(_ownerId: string, sandboxId: string, toolName: string): Promise<CallToolResult> {
+      expect(toolName).toBe('bash');
+      calls += 1;
+      if (calls === 1) {
+        return Promise.resolve({
+          content: [{ type: 'text', text: '' }],
+          structuredContent: { exitCode: 0, stdout: '', stderr: '' },
+        });
+      }
+      destroyListener?.(sandboxId);
+      return Promise.reject(new Error('injected snapshot failure after destruction'));
+    },
+  };
   const sessions = new BashSessionService(executor, (listener) => {
     destroyListener = listener;
   });
 
   await expect(
-    sessions.start('owner', 'sandbox', { command: 'sleep 30', yieldTimeMs: 0 }),
-  ).rejects.toThrow(/injected executor failure 2/);
+    sessions.start('owner', 'sandbox', { command: 'ignored by fake executor', yieldTimeMs: 0 }),
+  ).rejects.toThrow(/snapshot failure after destruction/);
+  expect(calls).toBe(2);
 });
 
 test('still rejects when the launch itself fails', async () => {
