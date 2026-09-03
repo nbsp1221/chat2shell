@@ -19,7 +19,7 @@ interface BashSession {
 }
 
 interface SessionStatus {
-  readonly status: "running" | "completed";
+  readonly status: "running" | "exited";
   readonly exitCode: number | null;
   readonly outputSize: number;
 }
@@ -29,6 +29,10 @@ export interface BashStartRequest {
   readonly cwd?: string;
   readonly yieldTimeMs?: number;
   readonly timeoutMs?: number;
+}
+
+export interface BashPollRequest {
+  readonly yieldTimeMs?: number;
 }
 
 function shellResult(result: CallToolResult): Record<string, unknown> {
@@ -128,8 +132,9 @@ export class BashSessionService {
     }
   }
 
-  async continue(ownerId: string, sandboxId: string, sessionId: string): Promise<CallToolResult> {
-    return this.#snapshot(this.#get(ownerId, sandboxId, sessionId));
+  async poll(ownerId: string, sandboxId: string, sessionId: string, request: BashPollRequest = {}): Promise<CallToolResult> {
+    const yieldTimeMs = boundedInteger("yield_time_ms", request.yieldTimeMs, DEFAULT_YIELD_MS, MAX_YIELD_MS);
+    return this.#snapshot(this.#get(ownerId, sandboxId, sessionId), yieldTimeMs);
   }
 
   async stop(ownerId: string, sandboxId: string, sessionId: string): Promise<CallToolResult> {
@@ -153,17 +158,21 @@ export class BashSessionService {
     }
   }
 
-  async #snapshot(session: BashSession): Promise<CallToolResult> {
+  async #snapshot(session: BashSession, yieldTimeMs = 0): Promise<CallToolResult> {
+    const checks = Math.ceil(yieldTimeMs / 100);
     const statusOutput = stdout(await this.#executor.call(session.ownerId, session.sandboxId, "bash", {
       command: [
+        checks > 0
+          ? `for ((i=0; i<${checks}; i++)); do [[ -f ${session.directory}/exit-code ]] && break; [[ $(wc -c <${session.directory}/output.log) -gt ${session.outputOffset} ]] && break; sleep 0.1; done`
+          : ":",
         `if [[ -f ${session.directory}/exit-code ]]; then`,
-        `  printf 'completed\\t%s\\t' \"$(cat ${session.directory}/exit-code)\"`,
+        `  printf 'exited\\t%s\\t' \"$(cat ${session.directory}/exit-code)\"`,
         "else",
         "  printf 'running\\t-\\t'",
         "fi",
         `wc -c <${session.directory}/output.log`,
       ].join("\n"),
-      timeout_ms: 5_000,
+      timeout_ms: Math.max(5_000, yieldTimeMs + 5_000),
     }));
     const status = this.#parseStatus(statusOutput);
     const bytesToRead = Math.min(OUTPUT_CHUNK_BYTES, Math.max(0, status.outputSize - session.outputOffset));
@@ -198,15 +207,15 @@ export class BashSessionService {
 
   #parseStatus(output: string): SessionStatus {
     const [status, exitCode, outputSize] = output.trim().split("\t");
-    if ((status !== "running" && status !== "completed") || !outputSize || !/^\d+$/.test(outputSize)) {
+    if ((status !== "running" && status !== "exited") || !outputSize || !/^\d+$/.test(outputSize)) {
       throw new Error("Invalid Bash session status");
     }
-    if (status === "completed" && (!exitCode || !/^-?\d+$/.test(exitCode))) {
+    if (status === "exited" && (!exitCode || !/^-?\d+$/.test(exitCode))) {
       throw new Error("Invalid Bash session exit code");
     }
     return {
       status,
-      exitCode: status === "completed" ? Number(exitCode) : null,
+      exitCode: status === "exited" ? Number(exitCode) : null,
       outputSize: Number(outputSize),
     };
   }

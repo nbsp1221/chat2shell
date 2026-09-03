@@ -106,12 +106,11 @@ test("the public MCP boundary routes full shell and private Docker only into a r
     const started = longCommand.structuredContent as { session_id: string; status: string; output: string };
     assert.equal(started.status, "running");
     assert.match(started.output, /start/);
-    await new Promise((resolve) => setTimeout(resolve, 2_200));
-    const continued = await callTool(url, 8, "bash_continue", { sandbox_id: sandboxId, session_id: started.session_id });
-    assert.equal((continued.structuredContent as { status: string }).status, "completed");
-    assert.match((continued.structuredContent as { output: string }).output, /alive/);
+    const polled = await callTool(url, 8, "bash_poll", { sandbox_id: sandboxId, session_id: started.session_id, yield_time_ms: 3_000 });
+    assert.equal((polled.structuredContent as { status: string }).status, "exited");
+    assert.match((polled.structuredContent as { output: string }).output, /alive/);
     const timed = await callTool(url, 9, "bash", { sandbox_id: sandboxId, command: "sleep 30", yield_time_ms: 2_000, timeout_ms: 1_000 });
-    assert.equal((timed.structuredContent as { status: string; exit_code: number }).status, "completed");
+    assert.equal((timed.structuredContent as { status: string; exit_code: number }).status, "exited");
     assert.equal((timed.structuredContent as { exit_code: number }).exit_code, 124);
 
     const afterLongCommand = await callTool(url, 10, "bash", { sandbox_id: sandboxId, command: "printf still-alive" });

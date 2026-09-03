@@ -117,7 +117,7 @@ export interface ControlServerDependencies {
   readonly sandboxes: Pick<SandboxService, "create" | "list" | "get" | "expose" | "destroy">;
   readonly workspaces: Pick<WorkspaceService, "list">;
   readonly codexPro: Pick<CodexProClientPool, "call">;
-  readonly bashSessions: Pick<BashSessionService, "start" | "continue" | "stop">;
+  readonly bashSessions: Pick<BashSessionService, "start" | "poll" | "stop">;
   readonly codexProTools: readonly Tool[];
 }
 
@@ -126,7 +126,7 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
     { name: "chat2shell", version: "0.2.0" },
     {
       capabilities: { tools: {} },
-      instructions: "Create or select an isolated sandbox first. Every sandbox tool requires an explicit sandbox_id. Bash is unrestricted inside the sandbox but never has host shell or host Docker access. When bash returns status=running, use bash_continue with its session_id to read new output or bash_stop to terminate it.",
+      instructions: "Create or select an isolated sandbox first. Every sandbox tool requires an explicit sandbox_id. Bash is unrestricted inside the sandbox but never has host shell or host Docker access. Poll a Bash session with bash_poll while status=running or has_more_output=true, or terminate it with bash_stop.",
     },
   );
   const codexTools = dependencies.codexProTools;
@@ -171,11 +171,12 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
             timeoutMs: args.timeout_ms as number | undefined,
           });
         }
-        case "bash_continue":
-          return dependencies.bashSessions.continue(
+        case "bash_poll":
+          return dependencies.bashSessions.poll(
             dependencies.principalId,
             optionalString(args, "sandbox_id") ?? "",
             optionalString(args, "session_id") ?? "",
+            { yieldTimeMs: args.yield_time_ms as number | undefined },
           );
         case "bash_stop":
           return dependencies.bashSessions.stop(

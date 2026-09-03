@@ -18,10 +18,16 @@ test("every CodexPro tool schema is static and scoped by an explicit sandbox_id"
 test("the public Bash contract uses explicit long-running sessions", () => {
   const tools = publicCodexProTools();
   const bash = tools.find((tool) => tool.name === "bash");
+  const poll = tools.find((tool) => tool.name === "bash_poll");
+  const stop = tools.find((tool) => tool.name === "bash_stop");
   assert.equal(tools.length, codexProToolManifest().length + 2);
   assert.equal(bash?.inputSchema.properties?.session_id, undefined);
   assert.equal((bash?.inputSchema.properties?.yield_time_ms as { maximum?: number }).maximum, 60_000);
+  assert.equal((bash?.inputSchema.properties?.yield_time_ms as { default?: number }).default, 10_000);
   assert.equal((bash?.inputSchema.properties?.timeout_ms as { maximum?: number }).maximum, undefined);
-  assert.ok(tools.some((tool) => tool.name === "bash_continue"));
-  assert.ok(tools.some((tool) => tool.name === "bash_stop"));
+  assert.equal((poll?.inputSchema.properties?.yield_time_ms as { maximum?: number }).maximum, 60_000);
+  assert.equal((poll?.inputSchema.properties?.yield_time_ms as { default?: number }).default, 10_000);
+  assert.deepEqual(poll?.outputSchema, bash?.outputSchema);
+  assert.deepEqual(stop?.outputSchema, bash?.outputSchema);
+  assert.deepEqual((bash?.outputSchema?.properties?.status as { enum?: string[] }).enum, ["running", "exited"]);
 });

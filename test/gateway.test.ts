@@ -55,7 +55,7 @@ test("serves management tools itself instead of proxying to a host CodexPro", as
       codexPro: { async call() { throw new Error("not used"); } },
       bashSessions: {
         async start() { throw new Error("not used"); },
-        async continue() { throw new Error("not used"); },
+        async poll() { throw new Error("not used"); },
         async stop() { throw new Error("not used"); },
       },
       codexProTools: [],

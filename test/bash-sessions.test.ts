@@ -36,7 +36,7 @@ function cleanupSession(id: string): void {
   fs.rmSync(`/tmp/chat2shell-bash/${id}`, { recursive: true, force: true });
 }
 
-test("returns completed output for a short command", async (context) => {
+test("returns exited output for a short command", async (context) => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "chat2shell-bash-test-"));
   context.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const sessions = new BashSessionService(new LocalBashExecutor(cwd));
@@ -47,14 +47,14 @@ test("returns completed output for a short command", async (context) => {
 
   assert.deepEqual(result.structuredContent, {
     session_id: id,
-    status: "completed",
+    status: "exited",
     exit_code: 0,
     output: "hello",
     has_more_output: false,
   });
 });
 
-test("returns a running session and only new output on continuation", async (context) => {
+test("returns a running session and long-polls for only new output", async (context) => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "chat2shell-bash-test-"));
   context.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const sessions = new BashSessionService(new LocalBashExecutor(cwd));
@@ -68,13 +68,12 @@ test("returns a running session and only new output on continuation", async (con
   assert.equal(started.structuredContent?.status, "running");
   assert.equal(started.structuredContent?.output, "first");
 
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  const completed = await sessions.continue("owner", "sandbox", id);
-  assert.equal(completed.structuredContent?.status, "completed");
-  assert.equal(completed.structuredContent?.exit_code, 0);
-  assert.equal(completed.structuredContent?.output, "second");
+  const exited = await sessions.poll("owner", "sandbox", id, { yieldTimeMs: 1_000 });
+  assert.equal(exited.structuredContent?.status, "exited");
+  assert.equal(exited.structuredContent?.exit_code, 0);
+  assert.equal(exited.structuredContent?.output, "second");
 
-  const empty = await sessions.continue("owner", "sandbox", id);
+  const empty = await sessions.poll("owner", "sandbox", id, { yieldTimeMs: 0 });
   assert.equal(empty.structuredContent?.output, "");
 });
 
@@ -88,7 +87,7 @@ test("stops the process group for a running session", async (context) => {
   context.after(() => cleanupSession(id));
   const stopped = await sessions.stop("owner", "sandbox", id);
 
-  assert.equal(stopped.structuredContent?.status, "completed");
+  assert.equal(stopped.structuredContent?.status, "exited");
   assert.notEqual(stopped.structuredContent?.exit_code, 0);
 });
 
@@ -105,7 +104,7 @@ test("applies an execution timeout only when requested", async (context) => {
   const id = sessionId(result);
   context.after(() => cleanupSession(id));
 
-  assert.equal(result.structuredContent?.status, "completed");
+  assert.equal(result.structuredContent?.status, "exited");
   assert.equal(result.structuredContent?.exit_code, 124);
 });
 
@@ -123,7 +122,7 @@ test("returns large output in bounded consecutive chunks", async (context) => {
   assert.equal((first.structuredContent?.output as string).length, 60_000);
   assert.equal(first.structuredContent?.has_more_output, true);
 
-  const second = await sessions.continue("owner", "sandbox", id);
+  const second = await sessions.poll("owner", "sandbox", id, { yieldTimeMs: 0 });
   assert.equal((second.structuredContent?.output as string).length, 10_000);
   assert.equal(second.structuredContent?.has_more_output, false);
 });
@@ -138,5 +137,5 @@ test("forgets sessions when their sandbox is destroyed", async () => {
   fs.rmSync(cwd, { recursive: true, force: true });
 
   destroyListener?.("sandbox");
-  await assert.rejects(() => sessions.continue("owner", "sandbox", id), /Unknown Bash session/);
+  await assert.rejects(() => sessions.poll("owner", "sandbox", id), /Unknown Bash session/);
 });

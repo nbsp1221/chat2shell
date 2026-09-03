@@ -80,7 +80,7 @@ Every tool call that reaches a running sandbox counts as activity, whether it su
 
 Cleanup checks run once per minute. Sandbox resources use Docker Sandboxes defaults. The outer MCP server accepts request bodies up to 20 MiB.
 
-Bash has no execution timeout unless `timeout_ms` is explicitly provided. `bash` waits up to `yield_time_ms`, which defaults to 10 seconds and accepts at most 60 seconds. A command that is still running returns a `session_id` instead of being killed. `bash_continue` returns new combined stdout/stderr plus the current status, and `bash_stop` sends SIGTERM followed by SIGKILL after 1.5 seconds if necessary. Bash sessions exist only in their sandbox and disappear when that sandbox is removed. They are not recovered after a chat2shell restart, because restart reconciliation removes the old sandbox.
+Bash has no execution timeout unless `timeout_ms` is explicitly provided. `bash` always returns a `session_id` and waits up to `yield_time_ms`, which defaults to 10 seconds and accepts at most 60 seconds. `bash_poll` waits for new output, process exit, or its own `yield_time_ms` expiry; that wait also defaults to 10 seconds and accepts at most 60 seconds. It returns only new combined stdout/stderr. Poll again while `status` is `running` or `has_more_output` is true. `bash_stop` sends SIGTERM followed by SIGKILL after 1.5 seconds if necessary. Bash sessions exist only in their sandbox and disappear when that sandbox is removed. They are not recovered after a chat2shell restart, because restart reconciliation removes the old sandbox.
 
 If CodexPro becomes unavailable, the sandbox changes to `failed`. `sandbox_list` shows it, and the user must destroy it before creating a replacement. chat2shell does not guess how to recover it.
 
@@ -161,7 +161,7 @@ Long commands use the same `bash` tool. A running result includes a session ID f
 
 ```text
 bash -> { "session_id": "bash_...", "status": "running", "output": "..." }
-bash_continue -> { "sandbox_id": "sbx_...", "session_id": "bash_..." }
+bash_poll -> { "sandbox_id": "sbx_...", "session_id": "bash_...", "yield_time_ms": 10000 }
 bash_stop -> { "sandbox_id": "sbx_...", "session_id": "bash_..." }
 ```
 
