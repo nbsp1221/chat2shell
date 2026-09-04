@@ -15,7 +15,8 @@
     "release": false
   },
   "hooks": {
-    "before:init": "pnpm check"
+    "before:init": "pnpm check",
+    "before:bump": "node scripts/require-stable-version.mjs ${version}"
   },
   "npm": {
     "publish": false
