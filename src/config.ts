@@ -18,6 +18,15 @@ export interface AppConfig {
   readonly reaperIntervalMs: number;
 }
 
+export interface RuntimeConfig extends AppConfig {
+  readonly runtimePidPath: string;
+  readonly tunnelEnabled: boolean;
+  readonly tunnelClient: string;
+  readonly tunnelKeyPath: string;
+  readonly tunnelIdPath: string;
+  readonly tunnelHealthUrlPath: string;
+}
+
 function readPort(value: string | undefined, fallback: number, name: string): number {
   const port = Number(value ?? fallback);
   if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
@@ -66,5 +75,21 @@ export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): App
     idleTimeoutMs: 24 * 60 * 60_000,
     workspaceRetentionMs: 30 * 24 * 60 * 60_000,
     reaperIntervalMs: 60_000,
+  };
+}
+
+export function loadRuntimeConfig(environment: NodeJS.ProcessEnv = process.env): RuntimeConfig {
+  const config = loadAppConfig(environment);
+  const tunnelSecretDir = resolvePath(
+    environment.CHAT2SHELL_SECRET_DIR ?? '~/.secrets/tunnel-client',
+  );
+  return {
+    ...config,
+    runtimePidPath: path.join(config.stateDir, 'runtime.pid'),
+    tunnelEnabled: environment.CHAT2SHELL_ENABLE_TUNNEL !== '0',
+    tunnelClient: resolvePath(environment.CHAT2SHELL_TUNNEL_CLIENT ?? '~/.local/bin/tunnel-client'),
+    tunnelKeyPath: path.join(tunnelSecretDir, 'key'),
+    tunnelIdPath: path.join(tunnelSecretDir, 'tunnel-id'),
+    tunnelHealthUrlPath: path.join(config.stateDir, 'health.url'),
   };
 }

@@ -55,7 +55,7 @@ This section is the complete product policy. A behavior that contradicts it is a
 - Docker's built-in MCP gateway may exist inside a shell sandbox, but chat2shell and CodexPro do not connect to it.
 - CodexPro endpoints use random bearer tokens and dynamically allocated loopback ports.
 - The internal bearer token is stored in the owner-only SQLite state file and is never returned through MCP.
-- Tunnel credentials remain outside this repository and are never read by the TypeScript application.
+- Tunnel credentials remain outside the npm package. chat2shell reads the tunnel ID and gives tunnel-client the key file path without exposing either value through MCP.
 
 ### Lifecycle and failure
 
@@ -88,40 +88,56 @@ Restarting chat2shell invalidates existing sandboxes because their foreground se
 
 Destroying an active sandbox follows the same workspace policy, so a managed workspace can be attached to a new sandbox with the same `workspace_id` during its 30-day retention period.
 
-## Setup
+## Install and run
 
-Requirements are Node.js 24 or newer, pnpm, Docker Sandboxes (`sbx`), and the previously installed Secure MCP Tunnel client.
+Requirements are Node.js 24 or newer, Docker Sandboxes (`sbx`), and the Secure MCP Tunnel client with its tunnel ID and key files.
+
+Install the CLI and prepare its pinned CodexPro sandbox template:
 
 ```bash
-pnpm install
-./scripts/setup-template.sh
-pnpm check
-pnpm test:e2e
+npm install --global chat2shell
+chat2shell setup
 ```
 
-`pnpm check` is the normal development and CI quality gate: formatting, linting, typechecking, unit and integration tests, and the production build. It deliberately excludes real Docker Sandbox E2E tests. Run `pnpm test:e2e` on a trusted host with `sbx` and the local CodexPro template installed. See [`test/README.md`](./test/README.md) for the test boundaries and individual commands.
+`setup` checks the required local tunnel files and Docker Sandboxes installation. It creates `chat2shell-codexpro:0.30.0` only when that template does not already exist. The template contains CodexPro and its npm dependencies, but no workspace, application source, credentials, or tunnel secret.
 
-`setup-template.sh` creates the local `chat2shell-codexpro:0.30.0` sandbox template once.
-The template contains CodexPro and its npm dependencies, but no workspace, application source, credentials, or tunnel secret.
+Run chat2shell in the foreground:
+
+```bash
+chat2shell serve
+```
+
+The `serve` process owns both the loopback MCP gateway and tunnel-client. It first reconciles sandbox state, then opens the gateway and starts the tunnel. It has no startup timeout, daemon mode, automatic restart, or service installation. Use `Ctrl+C` to stop an interactive process or let an external service manager supervise the same foreground command.
+
+Inspect a running instance from another terminal:
+
+```bash
+chat2shell status
+```
 
 Run locally without opening the tunnel:
 
 ```bash
-CHAT2SHELL_ENABLE_TUNNEL=0 ./scripts/run.sh
+CHAT2SHELL_ENABLE_TUNNEL=0 chat2shell serve
 ```
 
-Run with the configured Secure MCP Tunnel:
+Update an npm installation through the package manager that owns it:
 
 ```bash
-./scripts/run.sh
+npm update --global chat2shell
 ```
 
-Inspect or stop the runtime:
+chat2shell intentionally has no self-update command.
+
+## Development
 
 ```bash
-./scripts/status.sh
-./scripts/stop.sh
+pnpm install
+pnpm check
+pnpm test:e2e
 ```
+
+`pnpm check` is the normal development and CI quality gate: formatting, linting, typechecking, unit and integration tests, and the production bundle. It deliberately excludes real Docker Sandbox E2E tests. Run `pnpm test:e2e` on a trusted host with `sbx` and the local CodexPro template installed. See [`test/README.md`](./test/README.md) for the test boundaries and individual commands.
 
 ## Host workspace approval
 
@@ -129,17 +145,17 @@ When ChatGPT requests a new host path, `sandbox_create` returns an `approval_id`
 Review and decide it locally:
 
 ```bash
-pnpm cli approval list
-pnpm cli approval approve approval_...
-pnpm cli approval reject approval_...
+chat2shell approval list
+chat2shell approval approve approval_...
+chat2shell approval reject approval_...
 ```
 
 A host operator can also register a path directly:
 
 ```bash
-pnpm cli workspace add /path/to/repository --mode clone
-pnpm cli workspace add /path/to/repository --mode direct
-pnpm cli workspace list
+chat2shell workspace add /path/to/repository --mode clone
+chat2shell workspace add /path/to/repository --mode direct
+chat2shell workspace list
 ```
 
 After approval, call `sandbox_create` with the returned `workspace_id`.
@@ -198,6 +214,10 @@ Current locations are:
 The pinned template, Bash session behavior, and retention values are listed in Current policy above. CPU, memory, and disk use Docker Sandboxes defaults rather than chat2shell policy.
 
 OAuth, reboot persistence, the monitoring dashboard, and a browser approval UI do not exist. They will be considered only after the current prototype proves useful.
+
+## Releases
+
+Publishing a non-prerelease GitHub Release with a tag matching `v<package version>` runs the release workflow. It installs the locked dependencies, runs `pnpm check`, and publishes the exact npm package with provenance through npm trusted publishing. The workflow contains no long-lived npm token; the repository must be registered as a trusted publisher in npm before the first release.
 
 ## License
 

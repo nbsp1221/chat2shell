@@ -27,6 +27,12 @@ The Secure MCP Tunnel transports MCP messages to one loopback endpoint and does 
 The chat2shell process owns identity, path approval, lifecycle, expiration, and routing.
 The `SbxDriver` is the only component allowed to invoke `sbx`, and it accepts structured values rather than raw arguments.
 
+## Runtime ownership
+
+The npm package exposes one `chat2shell` executable. `chat2shell serve` is the only server entry point and stays in the foreground. It validates local dependencies, reconciles persisted sandbox state, opens the loopback MCP gateway, starts tunnel-client as its child, and closes both on SIGINT or SIGTERM.
+
+There is no shell-script supervisor, fixed startup timeout, daemon mode, automatic restart, or service installation. A process manager may supervise `chat2shell serve`, but those policies remain outside the product. `chat2shell status` reads the runtime PID and probes both the MCP gateway and tunnel readiness endpoints.
+
 ## Port exposure
 
 `sandbox_expose` asks `SbxDriver` to publish one TCP/IPv4 sandbox port on `0.0.0.0` using an automatically assigned host port. The service inside the sandbox must listen on `0.0.0.0`; chat2shell does not start it or check its protocol or health.
@@ -112,6 +118,7 @@ The trash directory is not emptied automatically. Host workspaces are never move
 At controller startup, persisted active records are reconciled with `sbx ls`.
 Any microVM left by the previous controller is removed and its sandbox record becomes `failed` because the foreground CodexPro session belonged to that controller.
 The user must destroy the failed sandbox before creating a replacement; chat2shell does not restart CodexPro or recover the old runtime automatically.
+Reconciliation completes before the MCP gateway begins listening and has no chat2shell-imposed time limit.
 
 ## Deferred boundaries
 

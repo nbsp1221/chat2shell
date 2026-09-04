@@ -1,18 +1,35 @@
 {
   "name": "chat2shell",
   "version": "0.2.0",
-  "private": true,
   "description": "A private MCP control plane for isolated shell and sandbox access from ChatGPT.",
+  "homepage": "https://github.com/nbsp1221/chat2shell#readme",
+  "bugs": "https://github.com/nbsp1221/chat2shell/issues",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nbsp1221/chat2shell.git"
+  },
+  "bin": {
+    "chat2shell": "dist/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "type": "module",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
-    "build": "pnpm clean && tsc -p tsconfig.build.json",
-    "clean": "node scripts/clean-dist.mjs",
-    "cli": "node dist/src/cli/main.js",
+    "build": "tsdown",
+    "cli": "node dist/cli.mjs",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint . && eslint .",
-    "start": "node dist/src/mcp/main.js",
+    "start": "node dist/cli.mjs serve",
     "test": "vitest run --project unit --project integration",
     "test:coverage": "vitest run --coverage --project unit --project integration",
     "test:e2e": "vitest run --project e2e",
@@ -23,6 +40,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
+    "cac": "7.0.0",
     "zod": "3.25.76"
   },
   "devDependencies": {
@@ -36,6 +54,7 @@
     "oxfmt": "0.59.0",
     "oxlint": "1.73.0",
     "oxlint-tsgolint": "0.25.0",
+    "tsdown": "0.22.14",
     "typescript": "^5.9.0",
     "vitest": "4.1.11"
   },
