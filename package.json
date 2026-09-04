@@ -1,6 +1,6 @@
 {
   "name": "chat2shell",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "description": "A private MCP control plane for isolated shell and sandbox access from ChatGPT.",
   "homepage": "https://github.com/nbsp1221/chat2shell#readme",
   "bugs": "https://github.com/nbsp1221/chat2shell/issues",
@@ -21,8 +21,7 @@
   ],
   "type": "module",
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "scripts": {
     "build": "tsdown",
@@ -31,6 +30,7 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint . && eslint .",
+    "release": "release-it",
     "start": "node dist/cli.mjs serve",
     "test": "vitest run --project unit --project integration",
     "test:coverage": "vitest run --coverage --project unit --project integration",
@@ -56,6 +56,7 @@
     "oxfmt": "0.59.0",
     "oxlint": "1.73.0",
     "oxlint-tsgolint": "0.25.0",
+    "release-it": "21.0.2",
     "tsdown": "0.22.14",
     "typescript": "^5.9.0",
     "vitest": "4.1.11"

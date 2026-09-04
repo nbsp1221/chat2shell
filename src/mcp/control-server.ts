@@ -9,6 +9,7 @@ import type { BashSessionService } from '../codexpro/bash-sessions.js';
 import type { CodexProClientPool } from '../codexpro/client-pool.js';
 import type { SandboxService } from '../sandbox/service.js';
 import type { WorkspaceService } from '../workspaces/service.js';
+import { version } from '../version.js';
 
 const sandboxCreateTool: Tool = {
   name: 'sandbox_create',
@@ -175,7 +176,7 @@ export interface ControlServerDependencies {
 
 export function createControlServer(dependencies: ControlServerDependencies): Server {
   const server = new Server(
-    { name: 'chat2shell', version: '0.2.0' },
+    { name: 'chat2shell', version },
     {
       capabilities: { tools: {} },
       instructions:
