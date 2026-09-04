@@ -62,9 +62,7 @@ export class SbxDriver implements SandboxDriver {
         `${image.repository}:${image.tag}`.replace(/^docker\.io\/library\//, '') === requested,
     );
     if (!present) {
-      throw new Error(
-        `Missing sandbox template ${this.#template}. Run scripts/setup-template.sh first.`,
-      );
+      throw new Error(`Missing sandbox template ${this.#template}. Run chat2shell setup first.`);
     }
   }
 
@@ -81,8 +79,6 @@ export class SbxDriver implements SandboxDriver {
       this.#template,
       '--publish',
       String(this.#sandboxPort),
-      '--deny-network',
-      'openrouter.ai',
     ];
     if (workspace.mode === 'clone') {
       args.push('--clone');

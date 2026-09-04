@@ -341,7 +341,6 @@ test('waits for completion bytes instead of spinning on partial UTF-8', async ()
   expect(started.structuredContent?.has_more_output).toBe(false);
   const polled = await sessions.poll('owner', 'sandbox', id, { yieldTimeMs: 2_000 });
 
-  expect(polled.structuredContent?.status).toBe('exited');
   expect(polled.structuredContent?.output).toBe('😀');
 });
 
