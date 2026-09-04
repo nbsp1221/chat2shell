@@ -1,0 +1,34 @@
+name: Feature request
+description: Propose a concrete improvement to chat2shell
+title: '[Feature]: '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        chat2shell intentionally keeps its scope small. Start with the problem and workflow rather than a preferred implementation.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is difficult or impossible today?
+      placeholder: Describe the user problem and when it occurs.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: What should become possible? Implementation details are optional.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What can you do today, and why is it insufficient?
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and boundary impact
+      description: Does this change host access, sandbox authority, persistence, networking, authentication, or the public MCP contract?
+      placeholder: No boundary impact / explain the affected boundary.
