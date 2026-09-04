@@ -2,7 +2,6 @@ import http, { type IncomingMessage, type Server, type ServerResponse } from 'no
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { AuthProvider } from '../auth/provider.js';
 import type { AppConfig } from '../config.js';
-import { sessionlessDiscoverResponse } from './compatibility.js';
 import { type ControlServerDependencies, createControlServer } from './control-server.js';
 
 type ControlServerWithoutPrincipal = Omit<ControlServerDependencies, 'principalId'>;
@@ -62,11 +61,6 @@ async function handleRequest(
 
   const principal = await dependencies.authProvider.authenticate(request.headers);
   const body = await readBody(request, config.maxBodyBytes);
-  const compatibilityResponse = sessionlessDiscoverResponse(request.headers, body);
-  if (compatibilityResponse) {
-    sendJson(response, 200, compatibilityResponse);
-    return;
-  }
   let parsedBody: unknown;
   try {
     parsedBody = JSON.parse(body.toString('utf8'));
@@ -86,6 +80,8 @@ async function handleRequest(
   });
   await mcpServer.connect(transport);
   try {
+    // MCP 2026-07-28 clients may probe `server/discover` before initialization.
+    // SDK 1.x returns -32601 here, which tells them to fall back to legacy `initialize`.
     await transport.handleRequest(request, response, parsedBody);
   } finally {
     await transport.close();

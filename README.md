@@ -32,7 +32,7 @@ This section describes the user-visible authority, workspace, network, credentia
 - A sandbox receives full shell and sudo-equivalent freedom only inside its microVM, including its own Docker Engine.
 - Bash is unrestricted inside the sandbox. Commands can modify sandbox files, install packages, access the network, and control the sandbox's private Docker Engine.
 - chat2shell does not ask for local approval for ordinary sandbox work. Creating a new host-backed workspace is the only local approval boundary.
-- The server has no OAuth and treats every request as `local-owner`. The tunnel and ChatGPT app must remain private to the owner.
+- The server has no authentication and treats every request as `local-owner`. Secure MCP Tunnel is the recommended transport. Any other exposure must provide its own authentication and access control; never expose the MCP endpoint directly to an untrusted network.
 
 ### Workspaces
 
@@ -48,10 +48,10 @@ This section describes the user-visible authority, workspace, network, credentia
 ### Network and credentials
 
 - General outbound network access follows Docker Sandboxes behavior.
+- chat2shell does not add, remove, or override Docker Sandboxes network policy.
 - `sandbox_expose` publishes one sandbox TCP port on an automatically assigned port on every host IPv4 interface. It is never called automatically, adds no authentication or expiration, and relies on the sandboxed service listening on `0.0.0.0`.
 - Repeating `sandbox_expose` for the same sandbox port returns the existing mapping. The mapping disappears when the sandbox is removed.
 - Traffic through an exposed port does not count as a tool call and does not renew the sandbox inactivity deadline.
-- chat2shell blocks outbound access to `openrouter.ai` for every sandbox.
 - Docker's built-in MCP gateway may exist inside a shell sandbox, but chat2shell and CodexPro do not connect to it.
 - CodexPro endpoints use random bearer tokens and dynamically allocated loopback ports.
 - The internal bearer token is stored in the owner-only SQLite state file and is never returned through MCP.
@@ -121,6 +121,8 @@ Run locally without opening the tunnel:
 CHAT2SHELL_ENABLE_TUNNEL=0 chat2shell setup
 CHAT2SHELL_ENABLE_TUNNEL=0 chat2shell serve
 ```
+
+The MCP endpoint binds to loopback by default. If you publish it through a reverse proxy, another tunnel, or a non-loopback bind, you are responsible for authenticating and restricting that route.
 
 Update an npm installation through the package manager that owns it:
 
@@ -217,3 +219,7 @@ The pinned template, Bash session behavior, and retention values are listed in C
 ## License
 
 chat2shell is available under the MIT License. See `THIRD_PARTY_NOTICES.md` for bundled third-party notices.
+
+## Roadmap
+
+See [`ROADMAP.md`](./ROADMAP.md) for the intended product direction.

@@ -135,18 +135,6 @@ test('routes full shell and private Docker only into a real microVM', async () =
     };
     expect(created.status).toBe('created');
     sandboxId = created.sandbox.id;
-    const runtimeName = `c2s-${sandboxId.slice(4, 25)}`;
-
-    const policy = spawnSync(
-      'sbx',
-      ['policy', 'check', 'network', '--sandbox', runtimeName, 'openrouter.ai'],
-      { encoding: 'utf8' },
-    );
-    expect(policy.status).toBe(1);
-    expect(
-      policy.stdout,
-      'chat2shell sandboxes must not use the inherited opencodex credential domain',
-    ).toMatch(/Denied/i);
 
     const write = await callTool(url, 4, 'write', {
       content: 'isolated\n',

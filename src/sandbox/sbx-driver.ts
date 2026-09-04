@@ -79,8 +79,6 @@ export class SbxDriver implements SandboxDriver {
       this.#template,
       '--publish',
       String(this.#sandboxPort),
-      '--deny-network',
-      'openrouter.ai',
     ];
     if (workspace.mode === 'clone') {
       args.push('--clone');

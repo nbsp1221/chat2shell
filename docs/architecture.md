@@ -45,7 +45,7 @@ The mapping is owned by Docker Sandboxes and disappears with the sandbox. chat2s
 `workspace_id` identifies persistent files and can be attached to a replacement sandbox after the previous runtime expires.
 Neither identity depends on a ChatGPT conversation or MCP session, so another conversation under the same authenticated principal can discover it with `sandbox_list` or `workspace_list`.
 
-The current authentication provider maps every accepted tunnel request to `local-owner`.
+The current authentication provider maps every accepted MCP request to `local-owner`. Secure MCP Tunnel is the recommended transport, but transport and access control remain outside this provider.
 
 ## Workspace modes
 

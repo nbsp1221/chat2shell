@@ -115,6 +115,9 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
   const port = await listen(gateway);
   const url = `http://127.0.0.1:${port}/mcp`;
 
+  const discovery = await rpc(url, 0, 'server/discover');
+  expect(discovery.error).toEqual({ code: -32601, message: 'Method not found' });
+
   await rpc(url, 1, 'initialize', {
     capabilities: {},
     clientInfo: { name: 'test', version: '1' },
