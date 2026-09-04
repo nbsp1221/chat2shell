@@ -10,7 +10,7 @@ The test suite is split by the boundary each test crosses. Keep tests in the nar
 pnpm test:unit
 ```
 
-Examples include configuration parsing, MCP compatibility helpers, tool schema transformation, and result normalization.
+Examples include configuration parsing, CLI behavior, tool schema transformation, and result normalization.
 
 ## Integration
 
