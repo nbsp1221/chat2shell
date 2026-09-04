@@ -299,11 +299,19 @@ test('serializes concurrent polls without duplicating or losing output', async (
     sessions.poll('owner', 'sandbox', id, { yieldTimeMs: 0 }),
     sessions.poll('owner', 'sandbox', id, { yieldTimeMs: 0 }),
   ]);
-  const exited = await sessions.poll('owner', 'sandbox', id, { yieldTimeMs: 1_000 });
-  const output = [...concurrent, exited].map((result) => result.structuredContent?.output).join('');
+  const results = [...concurrent];
+  let final;
+  do {
+    final = await sessions.poll('owner', 'sandbox', id, { yieldTimeMs: 1_000 });
+    results.push(final);
+  } while (
+    final.structuredContent?.status === 'running' ||
+    final.structuredContent?.has_more_output === true
+  );
+  const output = results.map((result) => result.structuredContent?.output).join('');
 
   expect(output).toBe('uniquelater');
-  expect(exited.structuredContent?.status).toBe('exited');
+  expect(final.structuredContent?.status).toBe('exited');
 });
 
 test('preserves UTF-8 characters across output chunks', async () => {
