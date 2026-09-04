@@ -23,7 +23,7 @@ The static contract deliberately excludes CodexPro's generic supertool, self-tes
 
 ## Current policy
 
-This section is the complete product policy. A behavior that contradicts it is a bug; a new behavior must be added here when it is introduced.
+This section describes the user-visible authority, workspace, network, credential, and lifecycle guarantees enforced by chat2shell.
 
 ### Authority
 
@@ -47,11 +47,11 @@ This section is the complete product policy. A behavior that contradicts it is a
 
 ### Network and credentials
 
-- Outbound network access follows the Docker Sandboxes policy installed on this machine. The current prototype intentionally permits general network access.
+- General outbound network access follows Docker Sandboxes behavior.
 - `sandbox_expose` publishes one sandbox TCP port on an automatically assigned port on every host IPv4 interface. It is never called automatically, adds no authentication or expiration, and relies on the sandboxed service listening on `0.0.0.0`.
 - Repeating `sandbox_expose` for the same sandbox port returns the existing mapping. The mapping disappears when the sandbox is removed.
 - Traffic through an exposed port does not count as a tool call and does not renew the sandbox inactivity deadline.
-- chat2shell denies `openrouter.ai` for its sandboxes so Docker's unrelated global `opencodex` credential cannot be used by ChatGPT.
+- chat2shell blocks outbound access to `openrouter.ai` for every sandbox.
 - Docker's built-in MCP gateway may exist inside a shell sandbox, but chat2shell and CodexPro do not connect to it.
 - CodexPro endpoints use random bearer tokens and dynamically allocated loopback ports.
 - The internal bearer token is stored in the owner-only SQLite state file and is never returned through MCP.
@@ -90,7 +90,7 @@ Destroying an active sandbox follows the same workspace policy, so a managed wor
 
 ## Install and run
 
-Requirements are Node.js 24 or newer, Docker Sandboxes (`sbx`), and the Secure MCP Tunnel client with its tunnel ID and key files.
+Requirements are Node.js 24 or newer and [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) (`sbx`). Tunnel mode additionally requires Secure MCP Tunnel access, its client, a tunnel ID, and a key file.
 
 Install the CLI and prepare its pinned CodexPro sandbox template:
 
@@ -118,6 +118,7 @@ chat2shell status
 Run locally without opening the tunnel:
 
 ```bash
+CHAT2SHELL_ENABLE_TUNNEL=0 chat2shell setup
 CHAT2SHELL_ENABLE_TUNNEL=0 chat2shell serve
 ```
 
@@ -212,12 +213,6 @@ Current locations are:
 - host allow root: `~/repositories`
 
 The pinned template, Bash session behavior, and retention values are listed in Current policy above. CPU, memory, and disk use Docker Sandboxes defaults rather than chat2shell policy.
-
-OAuth, reboot persistence, the monitoring dashboard, and a browser approval UI do not exist. They will be considered only after the current prototype proves useful.
-
-## Releases
-
-Publishing a non-prerelease GitHub Release with a tag matching `v<package version>` runs the release workflow. It installs the locked dependencies, runs `pnpm check`, and publishes the exact npm package with provenance through npm trusted publishing. The workflow contains no long-lived npm token; the repository must be registered as a trusted publisher in npm before the first release.
 
 ## License
 

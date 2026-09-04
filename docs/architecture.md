@@ -46,7 +46,6 @@ The mapping is owned by Docker Sandboxes and disappears with the sandbox. chat2s
 Neither identity depends on a ChatGPT conversation or MCP session, so another conversation under the same authenticated principal can discover it with `sandbox_list` or `workspace_list`.
 
 The current authentication provider maps every accepted tunnel request to `local-owner`.
-A future OAuth provider will change principal establishment without changing sandbox or workspace identities.
 
 ## Workspace modes
 
@@ -119,13 +118,3 @@ At controller startup, persisted active records are reconciled with `sbx ls`.
 Any microVM left by the previous controller is removed and its sandbox record becomes `failed` because the foreground CodexPro session belonged to that controller.
 The user must destroy the failed sandbox before creating a replacement; chat2shell does not restart CodexPro or recover the old runtime automatically.
 Reconciliation completes before the MCP gateway begins listening and has no chat2shell-imposed time limit.
-
-## Deferred boundaries
-
-- OAuth principal identity and per-user authorization
-- A human approval and monitoring dashboard
-- Reboot service installation
-- Export automation for private clone changes
-- Central Docker Sandbox governance profiles
-
-These additions do not require changing the tunnel endpoint, stable IDs, workspace modes, or public tool names.
