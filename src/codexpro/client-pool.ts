@@ -1,6 +1,7 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { Sandbox } from '../domain/types.js';
 import type { SandboxService } from '../sandbox/service.js';
+import { version } from '../version.js';
 
 interface JsonRpcResponse {
   readonly id?: unknown;
@@ -121,7 +122,7 @@ class CodexProSession {
       {
         protocolVersion: '2025-06-18',
         capabilities: {},
-        clientInfo: { name: 'chat2shell', version: '0.2.0' },
+        clientInfo: { name: 'chat2shell', version },
       },
       false,
     );

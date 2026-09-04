@@ -1,6 +1,6 @@
 {
   "name": "chat2shell",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "description": "A private MCP control plane for isolated shell and sandbox access from ChatGPT.",
   "homepage": "https://github.com/nbsp1221/chat2shell#readme",
   "bugs": "https://github.com/nbsp1221/chat2shell/issues",
