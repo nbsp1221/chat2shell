@@ -6,11 +6,8 @@ test('exposes only the supported CLI commands', () => {
     'setup',
     'serve',
     'status',
-    'workspace list',
-    'workspace add <path>',
-    'approval list',
-    'approval approve <id>',
-    'approval reject <id>',
+    'workspace <action> [path]',
+    'approval <action> [id]',
     'help [command]',
   ]);
 });

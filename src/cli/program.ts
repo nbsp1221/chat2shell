@@ -46,20 +46,29 @@ export function createCli(): CAC {
     }
   });
 
-  cli.command('workspace list', 'List managed and approved workspaces').action(() => {
-    console.log(
-      JSON.stringify(
-        withWorkspaceServices(({ workspaces }) => workspaces.list(ownerId)),
-        null,
-        2,
-      ),
-    );
-  });
-
   cli
-    .command('workspace add <path>', 'Register a host workspace')
+    .command('workspace <action> [path]', 'List or register workspaces')
     .option('--mode <mode>', 'Workspace mode: clone or direct', { default: 'clone' })
-    .action((workspacePath: string, options: { mode: string }) => {
+    .action((action: string, workspacePath: string | undefined, options: { mode: string }) => {
+      if (action === 'list') {
+        if (workspacePath) {
+          throw new Error('workspace list does not accept a path');
+        }
+        console.log(
+          JSON.stringify(
+            withWorkspaceServices(({ workspaces }) => workspaces.list(ownerId)),
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+      if (action !== 'add') {
+        throw new Error(`Unknown workspace action: ${action}`);
+      }
+      if (!workspacePath) {
+        throw new Error('workspace add requires a path');
+      }
       if (options.mode !== 'clone' && options.mode !== 'direct') {
         throw new Error('--mode must be clone or direct');
       }
@@ -74,35 +83,38 @@ export function createCli(): CAC {
       );
     });
 
-  cli.command('approval list', 'List workspace approval requests').action(() => {
-    console.log(
-      JSON.stringify(
-        withWorkspaceServices(({ database }) => database.listApprovals()),
-        null,
-        2,
-      ),
-    );
-  });
-
-  cli.command('approval approve <id>', 'Approve a workspace request').action((id: string) => {
-    console.log(
-      JSON.stringify(
-        withWorkspaceServices(({ workspaces }) => workspaces.approve(id)),
-        null,
-        2,
-      ),
-    );
-  });
-
-  cli.command('approval reject <id>', 'Reject a workspace request').action((id: string) => {
-    console.log(
-      JSON.stringify(
-        withWorkspaceServices(({ workspaces }) => workspaces.reject(id)),
-        null,
-        2,
-      ),
-    );
-  });
+  cli
+    .command('approval <action> [id]', 'List or decide workspace approval requests')
+    .action((action: string, id?: string) => {
+      if (action === 'list') {
+        if (id) {
+          throw new Error('approval list does not accept an ID');
+        }
+        console.log(
+          JSON.stringify(
+            withWorkspaceServices(({ database }) => database.listApprovals()),
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+      if (action !== 'approve' && action !== 'reject') {
+        throw new Error(`Unknown approval action: ${action}`);
+      }
+      if (!id) {
+        throw new Error(`approval ${action} requires an ID`);
+      }
+      console.log(
+        JSON.stringify(
+          withWorkspaceServices(({ workspaces }) =>
+            action === 'approve' ? workspaces.approve(id) : workspaces.reject(id),
+          ),
+          null,
+          2,
+        ),
+      );
+    });
 
   cli.command('help [command]', 'Show help for a command').action((commandName?: string) => {
     if (!commandName) {
@@ -127,5 +139,11 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     return;
   }
   cli.parse(argv, { run: false });
+  if (!cli.matchedCommand) {
+    if (cli.options.help || cli.options.version) {
+      return;
+    }
+    throw new Error(`Unknown command: ${String(cli.args[0])}`);
+  }
   await cli.runMatchedCommand();
 }

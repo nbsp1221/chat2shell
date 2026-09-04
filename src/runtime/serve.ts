@@ -1,7 +1,7 @@
 import type { Server } from 'node:http';
 import { type ChildProcess, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { SingleUserAuthProvider } from '../auth/single-user-provider.js';
 import { BashSessionService } from '../codexpro/bash-sessions.js';
 import { CodexProClientPool } from '../codexpro/client-pool.js';
@@ -26,6 +26,7 @@ async function assertRuntimeAvailable(config: RuntimeConfig): Promise<void> {
 
 async function claimRuntime(config: RuntimeConfig): Promise<void> {
   await mkdir(config.stateDir, { mode: 0o700, recursive: true });
+  await chmod(config.stateDir, 0o700);
   let existingPid: number | undefined;
   try {
     existingPid = Number((await readFile(config.runtimePidPath, 'utf8')).trim());
