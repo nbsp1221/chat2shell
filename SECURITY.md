@@ -4,12 +4,13 @@ chat2shell deliberately gives an AI agent strong capabilities inside disposable 
 
 ## Supported versions
 
-Until tagged public releases are distributed, security fixes target the current `main` branch.
+Security fixes target the latest published release and the current `main` branch.
 
-| Version                                       | Supported |
-| --------------------------------------------- | --------- |
-| Current `main`                                | ✅        |
-| Older commits, forks, or modified deployments | ❌        |
+| Version                                        | Supported |
+| ---------------------------------------------- | --------- |
+| Latest published release                       | ✅        |
+| Current `main`                                 | ✅        |
+| Older releases, forks, or modified deployments | ❌        |
 
 ## Reporting a vulnerability
 

@@ -4,6 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/nbsp1221/chat2shell/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nbsp1221/chat2shell/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://www.npmjs.com/package/chat2shell"><img alt="npm" src="https://img.shields.io/npm/v/chat2shell?style=flat-square&logo=npm"></a>
   <a href="https://nodejs.org/"><img alt="Node.js >=24" src="https://img.shields.io/badge/Node.js-%3E%3D24-339933?style=flat-square&logo=nodedotjs&logoColor=white"></a>
   <a href="https://docs.docker.com/ai/sandboxes/"><img alt="Docker Sandboxes" src="https://img.shields.io/badge/isolation-Docker%20Sandboxes-2496ED?style=flat-square&logo=docker&logoColor=white"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/nbsp1221/chat2shell?style=flat-square"></a>
@@ -56,22 +57,15 @@ The diagram is intentionally simplified. See [Architecture](./docs/architecture.
 ## Prerequisites
 
 - **Node.js 24+**
-- **pnpm 11.23.0**
 - **Docker Sandboxes** (`sbx`)
 - For ChatGPT access: **OpenAI Secure MCP Tunnel** access and the tunnel client configured for your account
 
-> [!NOTE]
-> `chat2shell` is not published to npm yet. For now, run the CLI from source.
-
 ## Quick start
 
-### 1. Clone and build
+### 1. Install chat2shell
 
 ```bash
-git clone https://github.com/nbsp1221/chat2shell.git
-cd chat2shell
-pnpm install --frozen-lockfile
-pnpm build
+npm install --global chat2shell
 ```
 
 ### 2. Prepare the sandbox template
@@ -79,7 +73,7 @@ pnpm build
 Start without a tunnel first to verify the local runtime:
 
 ```bash
-CHAT2SHELL_ENABLE_TUNNEL=0 pnpm cli setup
+CHAT2SHELL_ENABLE_TUNNEL=0 chat2shell setup
 ```
 
 `setup` checks Docker Sandboxes and creates the pinned `chat2shell-codexpro:0.30.0` template when needed.
@@ -87,13 +81,13 @@ CHAT2SHELL_ENABLE_TUNNEL=0 pnpm cli setup
 ### 3. Start the MCP server
 
 ```bash
-CHAT2SHELL_ENABLE_TUNNEL=0 pnpm cli serve
+CHAT2SHELL_ENABLE_TUNNEL=0 chat2shell serve
 ```
 
 In another terminal:
 
 ```bash
-CHAT2SHELL_ENABLE_TUNNEL=0 pnpm cli status
+CHAT2SHELL_ENABLE_TUNNEL=0 chat2shell status
 ```
 
 The local MCP endpoint binds to loopback by default.
@@ -103,8 +97,8 @@ The local MCP endpoint binds to loopback by default.
 Follow OpenAI's [Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels), configure the tunnel client, tunnel ID, and key file, then run:
 
 ```bash
-pnpm cli setup
-pnpm cli serve
+chat2shell setup
+chat2shell serve
 ```
 
 By default chat2shell expects:
@@ -173,8 +167,6 @@ chat2shell approval list                 List pending host-path approvals
 chat2shell approval approve <id>         Approve a host-path request
 chat2shell approval reject <id>          Reject a host-path request
 ```
-
-When running from source, use `pnpm cli <command>` instead of `chat2shell <command>`.
 
 ## Configuration
 
