@@ -12,6 +12,7 @@ import { WorkspaceService } from '../../src/workspaces/service.js';
 class FakeDriver implements SandboxDriver {
   readonly runtimes = new Map<string, RuntimeInfo>();
   createCalls = 0;
+  readonly memoryCalls: Array<number | undefined> = [];
   healthy = true;
   removeCalls = 0;
   startCalls = 0;
@@ -20,8 +21,13 @@ class FakeDriver implements SandboxDriver {
     return Promise.resolve();
   }
 
-  create(name: string): Promise<{ endpoint: string; runtimeRoot: string }> {
+  create(
+    name: string,
+    _workspace: unknown,
+    memoryBytes?: number,
+  ): Promise<{ endpoint: string; runtimeRoot: string }> {
     this.createCalls += 1;
+    this.memoryCalls.push(memoryBytes);
     this.runtimes.set(name, { name, status: 'running' });
     return Promise.resolve({ endpoint: 'http://127.0.0.1:1234/mcp', runtimeRoot: '/workspace' });
   }
@@ -131,6 +137,46 @@ test('explicit sandbox ids are reusable and one active sandbox is kept per works
   expect(destroyed.status).toBe('destroyed');
   expect(driver.removeCalls).toBe(1);
   expect(workspaces.list('owner')[0]?.status).toBe('retained');
+});
+
+test('applies an optional active sandbox limit without blocking reuse or later creation', async () => {
+  const { appConfig, database, driver, workspaces } = fixture('chat2shell-limit-');
+  const limited = new SandboxService({
+    config: { ...appConfig, maxActiveSandboxes: 1 },
+    database,
+    driver,
+    workspaces,
+  });
+
+  const first = sandboxFrom(await limited.create('owner', {}));
+  await expect(limited.create('owner', { workspaceId: first.workspace.id })).resolves.toMatchObject(
+    {
+      status: 'reused',
+    },
+  );
+  await expect(limited.create('owner', {})).rejects.toThrow(/1 maximum/);
+  expect(workspaces.list('owner')).toHaveLength(1);
+
+  await limited.destroy('owner', first.id);
+  await expect(limited.create('owner', {})).resolves.toMatchObject({ status: 'created' });
+});
+
+test('passes an explicit memory limit and rejects changing it on reuse', async () => {
+  const { driver, service } = fixture('chat2shell-memory-');
+  const first = sandboxFrom(await service.create('owner', { memory: '4g' }));
+
+  expect(first.memory).toBe('4g');
+  expect(driver.memoryCalls).toEqual([4 * 1024 * 1024 * 1024]);
+  await expect(service.create('owner', { workspaceId: first.workspace.id })).resolves.toMatchObject(
+    { status: 'reused' },
+  );
+  await expect(
+    service.create('owner', { memory: '4096m', workspaceId: first.workspace.id }),
+  ).resolves.toMatchObject({ status: 'reused' });
+  await expect(
+    service.create('owner', { memory: '8g', workspaceId: first.workspace.id }),
+  ).rejects.toThrow(/destroy it before changing memory/);
+  await expect(service.create('owner', { memory: '4GB' })).rejects.toThrow(/512m or 4g/);
 });
 
 test('host workspace requests stop at approval_required', async () => {

@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -16,6 +17,7 @@ export interface AppConfig {
   readonly idleTimeoutMs: number;
   readonly workspaceRetentionMs: number;
   readonly reaperIntervalMs: number;
+  readonly maxActiveSandboxes?: number;
 }
 
 export interface RuntimeConfig extends AppConfig {
@@ -46,8 +48,57 @@ function resolvePath(value: string): string {
   return path.resolve(expandHome(value));
 }
 
+interface FileConfig {
+  readonly maxActiveSandboxes?: number;
+}
+
+function readFileConfig(dataRoot: string): FileConfig {
+  const configPath = path.join(dataRoot, 'config.json');
+  let source: string;
+  try {
+    source = fs.readFileSync(configPath, 'utf8');
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      return {};
+    }
+    throw error;
+  }
+  const parsed: unknown = JSON.parse(source);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`${configPath} must contain a JSON object`);
+  }
+  const values = parsed as Record<string, unknown>;
+  const unknownKeys = Object.keys(values).filter((key) => key !== 'maxActiveSandboxes');
+  if (unknownKeys.length > 0) {
+    throw new Error(`${configPath} contains unknown setting: ${String(unknownKeys[0])}`);
+  }
+  const maxActiveSandboxes = values.maxActiveSandboxes;
+  if (
+    maxActiveSandboxes !== undefined &&
+    (!Number.isSafeInteger(maxActiveSandboxes) || Number(maxActiveSandboxes) < 0)
+  ) {
+    throw new Error(`${configPath} maxActiveSandboxes must be a non-negative integer`);
+  }
+  return { maxActiveSandboxes: maxActiveSandboxes as number | undefined };
+}
+
+function readMaxActiveSandboxes(value: string | undefined, fileValue?: number): number | undefined {
+  if (value === undefined) {
+    return fileValue;
+  }
+  if (value === 'unlimited') {
+    return undefined;
+  }
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 0 || value.trim() === '') {
+    throw new Error('CHAT2SHELL_MAX_ACTIVE_SANDBOXES must be a non-negative integer or unlimited');
+  }
+  return limit;
+}
+
 export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
   const dataRoot = resolvePath(environment.CHAT2SHELL_DATA_ROOT ?? '~/.chat2shell');
+  const fileConfig = readFileConfig(dataRoot);
   const stateDir = resolvePath(environment.CHAT2SHELL_STATE_DIR ?? path.join(dataRoot, 'state'));
   const workspaceRoot = resolvePath(
     environment.CHAT2SHELL_WORKSPACE_ROOT ?? path.join(dataRoot, 'workspaces'),
@@ -75,6 +126,10 @@ export function loadAppConfig(environment: NodeJS.ProcessEnv = process.env): App
     idleTimeoutMs: 24 * 60 * 60_000,
     workspaceRetentionMs: 30 * 24 * 60 * 60_000,
     reaperIntervalMs: 60_000,
+    maxActiveSandboxes: readMaxActiveSandboxes(
+      environment.CHAT2SHELL_MAX_ACTIVE_SANDBOXES,
+      fileConfig.maxActiveSandboxes,
+    ),
   };
 }
 

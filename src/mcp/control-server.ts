@@ -33,6 +33,12 @@ const sandboxCreateTool: Tool = {
         enum: ['managed', 'clone', 'direct'],
         description: 'Defaults to managed without a path and clone with a host path.',
       },
+      memory: {
+        type: 'string',
+        pattern: '^[1-9][0-9]*(m|g)$',
+        description:
+          'Optional sandbox memory limit in binary megabytes or gigabytes, such as 512m or 4g. Omit it to use the Docker Sandbox default.',
+      },
     },
     additionalProperties: false,
   },
@@ -204,6 +210,7 @@ export function createControlServer(dependencies: ControlServerDependencies): Se
               workspaceId: optionalString(args, 'workspace_id'),
               workspacePath: optionalString(args, 'workspace_path'),
               workspaceMode: mode,
+              memory: optionalString(args, 'memory'),
             }),
           );
         }

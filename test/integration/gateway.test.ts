@@ -70,6 +70,7 @@ async function rpc(
 test('serves management tools itself instead of proxying to a host CodexPro', async () => {
   let listCalls = 0;
   let exposedPort: number | undefined;
+  let requestedMemory: string | undefined;
   const gateway = createGateway(config(), {
     authProvider: new SingleUserAuthProvider(),
     controlServer: {
@@ -81,8 +82,9 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
       bashSessions: unusedBashSessions,
       codexProTools: [],
       sandboxes: {
-        create() {
-          return Promise.reject(new Error('not used'));
+        create(_ownerId, request) {
+          requestedMemory = request.memory;
+          return Promise.resolve({ status: 'created' as const });
         },
         destroy() {
           return Promise.reject(new Error('not used'));
@@ -150,6 +152,13 @@ test('serves management tools itself instead of proxying to a host CodexPro', as
     sandboxPort: 3_000,
   });
   expect(exposedPort).toBe(3_000);
+
+  const created = await rpc(url, 5, 'tools/call', {
+    arguments: { memory: '4g' },
+    name: 'sandbox_create',
+  });
+  expect((created.result as { isError?: boolean }).isError).not.toBe(true);
+  expect(requestedMemory).toBe('4g');
 });
 
 test('routes CodexPro tools by sandbox_id without forwarding routing fields', async () => {

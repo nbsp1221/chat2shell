@@ -77,14 +77,16 @@ Only the local CLI can approve or reject it, after which MCP callers refer to th
 
 1. Resolve an approved workspace or create a managed workspace.
 2. Reuse its active sandbox if one exists.
-3. Persist a `creating` record before invoking external commands.
-4. Create a named `shell` microVM from the pinned CodexPro template with Docker Sandboxes resource defaults and one dynamic loopback port.
+3. Atomically enforce the optional active-sandbox count limit and persist a `creating` record before invoking external commands.
+4. Create a named `shell` microVM from the pinned CodexPro template with Docker Sandboxes resource defaults, an optional caller-supplied memory limit, and one dynamic loopback port.
 5. Generate a random CodexPro bearer token.
 6. Start CodexPro inside the microVM with full bash, workspace writes, and only the sandbox workspace as an allowed root.
 7. Verify its authenticated health endpoint and persist the endpoint and token in the mode-`0600` SQLite database.
 8. Return a safe summary that omits the token, endpoint, runtime name, and runtime path.
 
 Failures remove a partially created runtime and persist a `failed` record for diagnosis.
+
+`maxActiveSandboxes` counts records in `creating`, `running`, or `destroying` state across this chat2shell database. Reuse and destruction are never blocked by the count limit. The default is unlimited. A per-sandbox memory value is passed directly as `sbx create --memory`; omitting it delegates to the Docker Sandboxes default. chat2shell does not implement cgroup discovery, memory admission, resource reservation, or automatic resizing.
 
 ## CodexPro routing
 

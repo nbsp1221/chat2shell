@@ -1,4 +1,6 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { DatabaseSync } from 'node:sqlite';
 import type { RuntimeConfig } from '../config.js';
 
 async function isReady(url: string): Promise<boolean> {
@@ -23,9 +25,12 @@ async function runningPid(config: RuntimeConfig): Promise<number | undefined> {
 }
 
 export async function status(config: RuntimeConfig): Promise<boolean> {
+  const activeSandboxes = countActiveSandboxes(config.databasePath);
+  const sandboxLimit = config.maxActiveSandboxes ?? 'unlimited';
   const pid = await runningPid(config);
   if (!pid) {
     console.log('Service  stopped');
+    console.log(`Sandboxes ${activeSandboxes} active / ${sandboxLimit} max`);
     return false;
   }
 
@@ -43,5 +48,23 @@ export async function status(config: RuntimeConfig): Promise<boolean> {
   console.log(`Service  running (PID ${pid})`);
   console.log(`MCP      ${mcpReady ? `ready at ${config.host}:${config.port}` : 'not ready'}`);
   console.log(`Tunnel   ${tunnelState}`);
+  console.log(`Sandboxes ${activeSandboxes} active / ${sandboxLimit} max`);
   return mcpReady && tunnelState !== 'not ready';
+}
+
+function countActiveSandboxes(databasePath: string): number {
+  if (databasePath !== ':memory:' && !existsSync(databasePath)) {
+    return 0;
+  }
+  const database = new DatabaseSync(databasePath, { readOnly: true });
+  try {
+    const row = database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying')",
+      )
+      .get();
+    return Number(row?.count ?? 0);
+  } finally {
+    database.close();
+  }
 }

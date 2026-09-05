@@ -54,6 +54,7 @@ function sandboxFromRow(row: Record<string, unknown>): Sandbox {
     lastActivityAt: Number(row.last_activity_at),
     expiresAt: Number(row.expires_at),
     destroyedAt: optionalNumber(row.destroyed_at),
+    memoryBytes: optionalNumber(row.memory_bytes),
   };
 }
 
@@ -114,7 +115,8 @@ export class StateDatabase {
         created_at INTEGER NOT NULL,
         last_activity_at INTEGER NOT NULL,
         expires_at INTEGER NOT NULL,
-        destroyed_at INTEGER
+        destroyed_at INTEGER,
+        memory_bytes INTEGER
       );
       CREATE UNIQUE INDEX IF NOT EXISTS one_active_sandbox_per_workspace
         ON sandboxes(owner_id, workspace_id) WHERE status IN ('creating', 'running', 'destroying');
@@ -240,19 +242,38 @@ export class StateDatabase {
     return rows.map(approvalFromRow);
   }
 
-  insertSandbox(sandbox: Sandbox): void {
-    this.#database
-      .prepare(`INSERT INTO sandboxes
-      (id, owner_id, workspace_id, runtime_name, runtime_root, status, endpoint, auth_token, error, created_at, last_activity_at, expires_at, destroyed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(...this.#sandboxValues(sandbox));
+  insertSandboxWithinLimit(sandbox: Sandbox, maxActiveSandboxes?: number): boolean {
+    this.#database.exec('BEGIN IMMEDIATE');
+    try {
+      if (maxActiveSandboxes !== undefined) {
+        const row = this.#database
+          .prepare(
+            "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying')",
+          )
+          .get();
+        if (Number(row?.count ?? 0) >= maxActiveSandboxes) {
+          this.#database.exec('ROLLBACK');
+          return false;
+        }
+      }
+      this.#database
+        .prepare(`INSERT INTO sandboxes
+        (id, owner_id, workspace_id, runtime_name, runtime_root, status, endpoint, auth_token, error, created_at, last_activity_at, expires_at, destroyed_at, memory_bytes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(...this.#sandboxValues(sandbox));
+      this.#database.exec('COMMIT');
+      return true;
+    } catch (error) {
+      this.#database.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   saveSandbox(sandbox: Sandbox): void {
     this.#database
       .prepare(`UPDATE sandboxes SET
       owner_id = ?, workspace_id = ?, runtime_name = ?, runtime_root = ?, status = ?, endpoint = ?, auth_token = ?, error = ?,
-      created_at = ?, last_activity_at = ?, expires_at = ?, destroyed_at = ? WHERE id = ?`)
+      created_at = ?, last_activity_at = ?, expires_at = ?, destroyed_at = ?, memory_bytes = ? WHERE id = ?`)
       .run(...this.#sandboxValues(sandbox).slice(1), sandbox.id);
   }
 
@@ -271,6 +292,7 @@ export class StateDatabase {
       sandbox.lastActivityAt,
       sandbox.expiresAt,
       sandbox.destroyedAt ?? null,
+      sandbox.memoryBytes ?? null,
     ];
   }
 
@@ -307,6 +329,15 @@ export class StateDatabase {
       )
       .all()
       .map(sandboxFromRow);
+  }
+
+  countActiveSandboxes(): number {
+    const row = this.#database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying')",
+      )
+      .get();
+    return Number(row?.count ?? 0);
   }
 
   listExpiredSandboxes(now: number): readonly Sandbox[] {

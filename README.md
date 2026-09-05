@@ -43,6 +43,7 @@ This section describes the user-visible authority, workspace, network, credentia
 - `direct` provides read-write access to exactly one locally approved host directory.
 - A host workspace approval is stored and reused; chat2shell does not ask again for the same path and mode.
 - One workspace can have one running sandbox. Repeating `sandbox_create` for it reuses that sandbox.
+- The number of active sandboxes is unlimited unless the operator sets `maxActiveSandboxes`. Creating, running, and destroying sandboxes count toward that limit; reuse and destruction remain available at the limit.
 - Managed workspace and state directories use owner-only permissions. The SQLite database file uses mode `0600`.
 
 ### Network and credentials
@@ -78,7 +79,7 @@ The complete automatic lifetime policy is intentionally small:
 
 Every tool call that reaches a running sandbox counts as activity, whether it succeeds or fails. Expiration is checked between calls and never interrupts a command already running. The trash directory is not emptied automatically. Host workspaces are outside chat2shell's ownership and are never moved or deleted.
 
-Cleanup checks run once per minute. Sandbox resources use Docker Sandboxes defaults. The outer MCP server accepts request bodies up to 20 MiB.
+Cleanup checks run once per minute. Sandbox resources use Docker Sandboxes defaults unless `sandbox_create.memory` sets a memory ceiling for one new sandbox. The outer MCP server accepts request bodies up to 20 MiB.
 
 Bash has no execution timeout unless `timeout_ms` is explicitly provided. `bash` always returns a `session_id` and waits up to `yield_time_ms`, which defaults to 10 seconds and accepts at most 60 seconds. If command launch succeeds but the initial status/output snapshot cannot be read, `bash` preserves the session and conservatively returns `status: running` with no output so the caller can recover with `bash_poll`. `bash_poll` waits for new output, process exit, or its own `yield_time_ms` expiry; that wait also defaults to 10 seconds and accepts at most 60 seconds. It returns only new combined stdout/stderr. Poll again while `status` is `running` or `has_more_output` is true. `bash_stop` sends SIGTERM followed by SIGKILL after 1.5 seconds if necessary. chat2shell does not redact Bash output: everything printed inside the sandbox is visible to the MCP client. Sensitive data must be controlled by the files and credentials explicitly made available to the sandbox. Bash sessions exist only in their sandbox and disappear when that sandbox is removed. They are not recovered after a chat2shell restart, because restart reconciliation removes the old sandbox.
 
@@ -169,8 +170,10 @@ Unexported changes in a private clone disappear when its sandbox is destroyed, s
 ## MCP workflow
 
 ```json
-{ "workspace_mode": "managed" }
+{ "workspace_mode": "managed", "memory": "4g" }
 ```
+
+`memory` is optional and accepts positive binary megabytes or gigabytes such as `512m` or `4g`. When omitted, chat2shell does not pass a memory setting to Docker Sandboxes. An existing sandbox can be reused without repeating `memory`; requesting a different limit requires destroying it first.
 
 Pass the returned sandbox ID to every CodexPro tool:
 
@@ -205,7 +208,7 @@ Available management tools are `sandbox_create`, `sandbox_list`, `sandbox_get`, 
 
 ## Configuration
 
-`.env.example` contains deployment locations and the tunnel switch. Sandbox authority and lifetime values are fixed policy, not environment-specific behavior.
+`.env.example` contains deployment locations, the tunnel switch, and the optional active sandbox limit. Sandbox authority and lifetime values are fixed policy, not environment-specific behavior.
 
 Current locations are:
 
@@ -214,7 +217,17 @@ Current locations are:
 - managed workspaces: `~/.chat2shell/workspaces`
 - host allow root: `~/repositories`
 
-The pinned template, Bash session behavior, and retention values are listed in Current policy above. CPU, memory, and disk use Docker Sandboxes defaults rather than chat2shell policy.
+An optional `~/.chat2shell/config.json` can limit sandboxes managed by this chat2shell instance:
+
+```json
+{
+  "maxActiveSandboxes": 4
+}
+```
+
+Omitting the field means unlimited. `0` prevents new sandbox creation. `CHAT2SHELL_MAX_ACTIVE_SANDBOXES` overrides the file with a non-negative integer; `unlimited` explicitly overrides a file limit. Configuration is read at process start, so changes take effect after restarting `chat2shell serve`. `chat2shell status` shows the effective limit and active count.
+
+The pinned template, Bash session behavior, and retention values are listed in Current policy above. CPU and disk always use Docker Sandboxes defaults. Memory also uses that default unless a caller explicitly supplies `sandbox_create.memory`. chat2shell does not inspect or modify cgroups, calculate host memory availability, reserve memory, or automatically resize or remove sandboxes.
 
 ## License
 

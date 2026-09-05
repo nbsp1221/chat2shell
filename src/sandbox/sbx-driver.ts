@@ -2,6 +2,7 @@ import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { promisify } from 'node:util';
 import type { Workspace } from '../domain/types.js';
+import { formatMemory } from './memory.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -32,6 +33,7 @@ export interface SandboxDriver {
   create(
     runtimeName: string,
     workspace: Workspace,
+    memoryBytes?: number,
   ): Promise<{ endpoint: string; runtimeRoot: string }>;
   startCodexPro(runtimeName: string, runtimeRoot: string, authToken: string): Promise<void>;
   waitUntilHealthy(endpoint: string, authToken: string, timeoutMs?: number): Promise<void>;
@@ -69,6 +71,7 @@ export class SbxDriver implements SandboxDriver {
   async create(
     runtimeName: string,
     workspace: Workspace,
+    memoryBytes?: number,
   ): Promise<{ endpoint: string; runtimeRoot: string }> {
     const args = [
       'create',
@@ -80,6 +83,9 @@ export class SbxDriver implements SandboxDriver {
       '--publish',
       String(this.#sandboxPort),
     ];
+    if (memoryBytes !== undefined) {
+      args.push('--memory', formatMemory(memoryBytes));
+    }
     if (workspace.mode === 'clone') {
       args.push('--clone');
     }

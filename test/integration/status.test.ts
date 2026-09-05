@@ -24,11 +24,12 @@ test('reports a stopped service when no live PID exists', async () => {
     loadRuntimeConfig({
       CHAT2SHELL_DATA_ROOT: path.join(root, '.chat2shell'),
       CHAT2SHELL_ENABLE_TUNNEL: '0',
+      CHAT2SHELL_MAX_ACTIVE_SANDBOXES: '2',
     }),
   );
 
   expect(ready).toBe(false);
-  expect(output).toEqual(['Service  stopped']);
+  expect(output).toEqual(['Service  stopped', 'Sandboxes 0 active / 2 max']);
 });
 
 test('checks the running process and MCP health', async () => {
@@ -60,6 +61,7 @@ test('checks the running process and MCP health', async () => {
       `Service  running (PID ${process.pid})`,
       `MCP      ready at 127.0.0.1:${address.port}`,
       'Tunnel   disabled',
+      'Sandboxes 0 active / unlimited max',
     ]);
   } finally {
     server.close();
