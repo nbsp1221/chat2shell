@@ -40,6 +40,7 @@ export interface Sandbox {
   readonly lastActivityAt: number;
   readonly expiresAt: number;
   readonly destroyedAt?: number;
+  readonly memoryBytes?: number;
 }
 
 export interface SandboxSummary {
@@ -51,6 +52,7 @@ export interface SandboxSummary {
   readonly lastActivityAt: number;
   readonly expiresAt: number;
   readonly destroyedAt?: number;
+  readonly memory: string | null;
 }
 
 export interface SandboxCreateResult {

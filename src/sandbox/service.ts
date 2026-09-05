@@ -13,11 +13,13 @@ import type { StateDatabase } from '../state/database.js';
 import type { WorkspaceService } from '../workspaces/service.js';
 import { createId } from '../domain/ids.js';
 import type { SandboxDriver } from './sbx-driver.js';
+import { formatMemory, parseMemory } from './memory.js';
 
 export interface CreateSandboxRequest {
   readonly workspaceId?: string;
   readonly workspacePath?: string;
   readonly workspaceMode?: WorkspaceMode;
+  readonly memory?: string;
 }
 
 function isApproval(value: Workspace | Approval): value is Approval {
@@ -55,6 +57,7 @@ export class SandboxService {
     if (request.workspaceId && request.workspacePath) {
       throw new Error('Specify workspace_id or workspace_path, not both');
     }
+    const memoryBytes = request.memory ? parseMemory(request.memory) : undefined;
     let workspace: Workspace;
     if (request.workspaceId) {
       workspace = this.#workspaces.getApproved(ownerId, request.workspaceId);
@@ -77,11 +80,22 @@ export class SandboxService {
       if (request.workspaceMode && request.workspaceMode !== 'managed') {
         throw new Error('workspace_mode requires workspace_path or workspace_id');
       }
+      if (
+        this.#config.maxActiveSandboxes !== undefined &&
+        this.#database.countActiveSandboxes() >= this.#config.maxActiveSandboxes
+      ) {
+        throw this.#sandboxLimitError();
+      }
       workspace = this.#workspaces.createManaged(ownerId);
     }
 
     const active = this.#database.findActiveSandbox(ownerId, workspace.id);
     if (active?.status === 'running') {
+      if (memoryBytes !== undefined && memoryBytes !== active.memoryBytes) {
+        throw new Error(
+          `Workspace already has sandbox ${active.id} with memory=${active.memoryBytes === undefined ? 'default' : formatMemory(active.memoryBytes)}; destroy it before changing memory`,
+        );
+      }
       return { status: 'reused', sandbox: this.#summarize(active) };
     }
     if (active) {
@@ -99,11 +113,14 @@ export class SandboxService {
       createdAt: now,
       lastActivityAt: now,
       expiresAt: now + this.#config.idleTimeoutMs,
+      memoryBytes,
     };
-    this.#database.insertSandbox(sandbox);
+    if (!this.#database.insertSandboxWithinLimit(sandbox, this.#config.maxActiveSandboxes)) {
+      throw this.#sandboxLimitError();
+    }
 
     try {
-      const runtime = await this.#driver.create(sandbox.runtimeName, workspace);
+      const runtime = await this.#driver.create(sandbox.runtimeName, workspace, memoryBytes);
       const authToken = randomBytes(32).toString('hex');
       await this.#driver.startCodexPro(sandbox.runtimeName, runtime.runtimeRoot, authToken);
       await this.#driver.waitUntilHealthy(runtime.endpoint, authToken);
@@ -274,6 +291,12 @@ export class SandboxService {
     }
   }
 
+  #sandboxLimitError(): Error {
+    return new Error(
+      `Active sandbox limit reached: ${String(this.#config.maxActiveSandboxes)} maximum`,
+    );
+  }
+
   async #removeSandbox(sandbox: Sandbox): Promise<SandboxSummary> {
     this.#database.saveSandbox({ ...sandbox, status: 'destroying' });
     try {
@@ -313,6 +336,7 @@ export class SandboxService {
       lastActivityAt: sandbox.lastActivityAt,
       expiresAt: sandbox.expiresAt,
       destroyedAt: sandbox.destroyedAt,
+      memory: sandbox.memoryBytes === undefined ? null : formatMemory(sandbox.memoryBytes),
     };
   }
 }

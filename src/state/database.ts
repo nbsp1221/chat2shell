@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { Approval, Sandbox, SandboxStatus, Workspace } from '../domain/types.js';
+import { migrate } from './migrations.js';
 
 type SqlValue = string | number | null;
 
@@ -54,6 +55,7 @@ function sandboxFromRow(row: Record<string, unknown>): Sandbox {
     lastActivityAt: Number(row.last_activity_at),
     expiresAt: Number(row.expires_at),
     destroyedAt: optionalNumber(row.destroyed_at),
+    memoryBytes: optionalNumber(row.memory_bytes),
   };
 }
 
@@ -66,59 +68,19 @@ export class StateDatabase {
     if (databasePath !== ':memory:') {
       fs.chmodSync(databasePath, 0o600);
     }
-    this.#database.exec(
-      'PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;',
-    );
-    this.#migrate();
+    try {
+      this.#database.exec(
+        'PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;',
+      );
+      migrate(this.#database);
+    } catch (error) {
+      this.#database.close();
+      throw error;
+    }
   }
 
   close(): void {
     this.#database.close();
-  }
-
-  #migrate(): void {
-    this.#database.exec(`
-      CREATE TABLE IF NOT EXISTS workspaces (
-        id TEXT PRIMARY KEY,
-        owner_id TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK (kind IN ('managed', 'host')),
-        mode TEXT NOT NULL CHECK (mode IN ('managed', 'clone', 'direct')),
-        root TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('approved', 'retained', 'trashed')),
-        created_at INTEGER NOT NULL,
-        retained_until INTEGER,
-        UNIQUE(owner_id, root, mode)
-      );
-      CREATE TABLE IF NOT EXISTS approvals (
-        id TEXT PRIMARY KEY,
-        owner_id TEXT NOT NULL,
-        requested_path TEXT NOT NULL,
-        mode TEXT NOT NULL CHECK (mode IN ('clone', 'direct')),
-        status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
-        workspace_id TEXT REFERENCES workspaces(id),
-        created_at INTEGER NOT NULL,
-        decided_at INTEGER
-      );
-      CREATE UNIQUE INDEX IF NOT EXISTS one_pending_path_approval
-        ON approvals(owner_id, requested_path, mode) WHERE status = 'pending';
-      CREATE TABLE IF NOT EXISTS sandboxes (
-        id TEXT PRIMARY KEY,
-        owner_id TEXT NOT NULL,
-        workspace_id TEXT NOT NULL REFERENCES workspaces(id),
-        runtime_name TEXT NOT NULL UNIQUE,
-        runtime_root TEXT,
-        status TEXT NOT NULL CHECK (status IN ('creating', 'running', 'destroying', 'destroyed', 'failed')),
-        endpoint TEXT,
-        auth_token TEXT,
-        error TEXT,
-        created_at INTEGER NOT NULL,
-        last_activity_at INTEGER NOT NULL,
-        expires_at INTEGER NOT NULL,
-        destroyed_at INTEGER
-      );
-      CREATE UNIQUE INDEX IF NOT EXISTS one_active_sandbox_per_workspace
-        ON sandboxes(owner_id, workspace_id) WHERE status IN ('creating', 'running', 'destroying');
-    `);
   }
 
   insertWorkspace(workspace: Workspace): void {
@@ -240,19 +202,38 @@ export class StateDatabase {
     return rows.map(approvalFromRow);
   }
 
-  insertSandbox(sandbox: Sandbox): void {
-    this.#database
-      .prepare(`INSERT INTO sandboxes
-      (id, owner_id, workspace_id, runtime_name, runtime_root, status, endpoint, auth_token, error, created_at, last_activity_at, expires_at, destroyed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(...this.#sandboxValues(sandbox));
+  insertSandboxWithinLimit(sandbox: Sandbox, maxActiveSandboxes?: number): boolean {
+    this.#database.exec('BEGIN IMMEDIATE');
+    try {
+      if (maxActiveSandboxes !== undefined) {
+        const row = this.#database
+          .prepare(
+            "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying')",
+          )
+          .get();
+        if (Number(row?.count ?? 0) >= maxActiveSandboxes) {
+          this.#database.exec('ROLLBACK');
+          return false;
+        }
+      }
+      this.#database
+        .prepare(`INSERT INTO sandboxes
+        (id, owner_id, workspace_id, runtime_name, runtime_root, status, endpoint, auth_token, error, created_at, last_activity_at, expires_at, destroyed_at, memory_bytes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(...this.#sandboxValues(sandbox));
+      this.#database.exec('COMMIT');
+      return true;
+    } catch (error) {
+      this.#database.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   saveSandbox(sandbox: Sandbox): void {
     this.#database
       .prepare(`UPDATE sandboxes SET
       owner_id = ?, workspace_id = ?, runtime_name = ?, runtime_root = ?, status = ?, endpoint = ?, auth_token = ?, error = ?,
-      created_at = ?, last_activity_at = ?, expires_at = ?, destroyed_at = ? WHERE id = ?`)
+      created_at = ?, last_activity_at = ?, expires_at = ?, destroyed_at = ?, memory_bytes = ? WHERE id = ?`)
       .run(...this.#sandboxValues(sandbox).slice(1), sandbox.id);
   }
 
@@ -271,6 +252,7 @@ export class StateDatabase {
       sandbox.lastActivityAt,
       sandbox.expiresAt,
       sandbox.destroyedAt ?? null,
+      sandbox.memoryBytes ?? null,
     ];
   }
 
@@ -307,6 +289,15 @@ export class StateDatabase {
       )
       .all()
       .map(sandboxFromRow);
+  }
+
+  countActiveSandboxes(): number {
+    const row = this.#database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM sandboxes WHERE status IN ('creating', 'running', 'destroying')",
+      )
+      .get();
+    return Number(row?.count ?? 0);
   }
 
   listExpiredSandboxes(now: number): readonly Sandbox[] {

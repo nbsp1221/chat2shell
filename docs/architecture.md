@@ -31,6 +31,8 @@ The `SbxDriver` is the only component allowed to invoke `sbx`, and it accepts st
 
 The npm package exposes one `chat2shell` executable. `chat2shell serve` is the only server entry point and stays in the foreground. It validates local dependencies, reconciles persisted sandbox state, opens the loopback MCP gateway, starts tunnel-client as its child, and closes both on SIGINT or SIGTERM.
 
+The writable SQLite connection checks the application-owned `user_version` and applies all pending forward migrations in one transaction before exposing the database to application logic. Fresh and existing databases follow the same ordered migration list. Reopening an up-to-date database is a no-op, while a database created by a newer unsupported chat2shell version fails before any application work. There is no manual migration command, down migration, or schema-dependent branch in business logic.
+
 There is no shell-script supervisor, fixed startup timeout, daemon mode, automatic restart, or service installation. A process manager may supervise `chat2shell serve`, but those policies remain outside the product. `chat2shell status` reads the runtime PID and probes both the MCP gateway and tunnel readiness endpoints.
 
 ## Port exposure
@@ -77,14 +79,16 @@ Only the local CLI can approve or reject it, after which MCP callers refer to th
 
 1. Resolve an approved workspace or create a managed workspace.
 2. Reuse its active sandbox if one exists.
-3. Persist a `creating` record before invoking external commands.
-4. Create a named `shell` microVM from the pinned CodexPro template with Docker Sandboxes resource defaults and one dynamic loopback port.
+3. Atomically enforce the optional active-sandbox count limit and persist a `creating` record before invoking external commands.
+4. Create a named `shell` microVM from the pinned CodexPro template with Docker Sandboxes resource defaults, an optional caller-supplied memory limit, and one dynamic loopback port.
 5. Generate a random CodexPro bearer token.
 6. Start CodexPro inside the microVM with full bash, workspace writes, and only the sandbox workspace as an allowed root.
 7. Verify its authenticated health endpoint and persist the endpoint and token in the mode-`0600` SQLite database.
 8. Return a safe summary that omits the token, endpoint, runtime name, and runtime path.
 
 Failures remove a partially created runtime and persist a `failed` record for diagnosis.
+
+`maxActiveSandboxes` counts records in `creating`, `running`, or `destroying` state across this chat2shell database. Reuse and destruction are never blocked by the count limit. The default is unlimited. A per-sandbox memory value is passed directly as `sbx create --memory`; omitting it delegates to the Docker Sandboxes default. chat2shell does not implement cgroup discovery, memory admission, resource reservation, or automatic resizing.
 
 ## CodexPro routing
 

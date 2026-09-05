@@ -79,6 +79,7 @@ test('routes full shell and private Docker only into a real microVM', async () =
     host: '127.0.0.1',
     idleTimeoutMs: 24 * 60 * 60_000,
     maxBodyBytes: 20 * 1024 * 1024,
+    maxActiveSandboxes: 1,
     port: 0,
     reaperIntervalMs: 60_000,
     sandboxPort: 18_787,
@@ -128,13 +129,20 @@ test('routes full shell and private Docker only into a real microVM', async () =
       'sandbox_id',
     );
 
-    const createResult = await callTool(url, 3, 'sandbox_create', {});
+    const createResult = await callTool(url, 3, 'sandbox_create', { memory: '4g' });
     const created = createResult.structuredContent as {
-      sandbox: { id: string; workspace: { id: string; root: string } };
+      sandbox: { id: string; memory: string | null; workspace: { id: string; root: string } };
       status: string;
     };
     expect(created.status).toBe('created');
+    expect(created.sandbox.memory).toBe('4g');
     sandboxId = created.sandbox.id;
+
+    const overLimit = await callTool(url, 100, 'sandbox_create', {});
+    expect(overLimit.isError).toBe(true);
+    expect((overLimit.content as Array<{ text: string }>)[0]?.text).toMatch(
+      /Active sandbox limit reached/,
+    );
 
     const write = await callTool(url, 4, 'write', {
       content: 'isolated\n',
