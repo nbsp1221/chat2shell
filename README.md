@@ -110,6 +110,8 @@ chat2shell serve
 
 The `serve` process owns both the loopback MCP gateway and tunnel-client. It first reconciles sandbox state, then opens the gateway and starts the tunnel. It has no startup timeout, daemon mode, automatic restart, or service installation. Use `Ctrl+C` to stop an interactive process or let an external service manager supervise the same foreground command.
 
+Opening the writable state database automatically applies every pending schema migration in one transaction before application logic runs. Upgrading the package therefore requires no separate database command or manual SQL.
+
 Inspect a running instance from another terminal:
 
 ```bash

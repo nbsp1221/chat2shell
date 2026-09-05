@@ -31,6 +31,8 @@ The `SbxDriver` is the only component allowed to invoke `sbx`, and it accepts st
 
 The npm package exposes one `chat2shell` executable. `chat2shell serve` is the only server entry point and stays in the foreground. It validates local dependencies, reconciles persisted sandbox state, opens the loopback MCP gateway, starts tunnel-client as its child, and closes both on SIGINT or SIGTERM.
 
+The writable SQLite connection checks the application-owned `user_version` and applies all pending forward migrations in one transaction before exposing the database to application logic. Fresh and existing databases follow the same ordered migration list. Reopening an up-to-date database is a no-op, while a database created by a newer unsupported chat2shell version fails before any application work. There is no manual migration command, down migration, or schema-dependent branch in business logic.
+
 There is no shell-script supervisor, fixed startup timeout, daemon mode, automatic restart, or service installation. A process manager may supervise `chat2shell serve`, but those policies remain outside the product. `chat2shell status` reads the runtime PID and probes both the MCP gateway and tunnel readiness endpoints.
 
 ## Port exposure
